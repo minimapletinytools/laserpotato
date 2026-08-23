@@ -48,6 +48,35 @@ pub enum PlayerAction {
     Reset,
 }
 
+impl PlayerAction {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PlayerAction::Forward => "Forward",
+            PlayerAction::Backward => "Backward",
+            PlayerAction::TurnLeft => "TurnLeft",
+            PlayerAction::TurnRight => "TurnRight",
+            PlayerAction::Interact => "Interact",
+            PlayerAction::Wait => "Wait",
+            PlayerAction::Undo => "Undo",
+            PlayerAction::Reset => "Reset",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.trim().to_lowercase().as_str() {
+            "forward" => Some(PlayerAction::Forward),
+            "backward" => Some(PlayerAction::Backward),
+            "turnleft" | "turn_left" | "left" => Some(PlayerAction::TurnLeft),
+            "turnright" | "turn_right" | "right" => Some(PlayerAction::TurnRight),
+            "interact" => Some(PlayerAction::Interact),
+            "wait" => Some(PlayerAction::Wait),
+            "undo" => Some(PlayerAction::Undo),
+            "reset" => Some(PlayerAction::Reset),
+            _ => None,
+        }
+    }
+}
+
 /// Overall outcome / state of the game session.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum GameOutcome {
@@ -456,23 +485,23 @@ mod tests {
         assert!(!engine.is_won());
 
         // Manually place mirrors in winning relay positions:
-        // Move MM2 from (4, 1) to (5, 6)
-        let mm2_id = engine.world.body_at(IVec3::new(4, 1, 0)).unwrap().id;
+        // Move MM2 from (3, 6) to (5, 6)
+        let mm2_id = engine.world.body_at(IVec3::new(3, 6, 0)).unwrap().id;
         engine.world.body_mut(mm2_id).unwrap().anchor = IVec3::new(5, 6, 0);
 
-        // Move MM1 from (3, 4) to (1, 4)
-        let mm1_id = engine.world.body_at(IVec3::new(3, 4, 0)).unwrap().id;
+        // Move MM1 from (2, 5) to (1, 4)
+        let mm1_id = engine.world.body_at(IVec3::new(2, 5, 0)).unwrap().id;
         engine.world.body_mut(mm1_id).unwrap().anchor = IVec3::new(1, 4, 0);
 
-        // Unblock laser by moving crate P from (1, 2) to (0, 2)
-        let crate_id = engine.world.body_at(IVec3::new(1, 2, 0)).unwrap().id;
-        engine.world.body_mut(crate_id).unwrap().anchor = IVec3::new(0, 2, 0);
+        // Push LaserSource from (1, 0) to (1, 1)
+        let laser_id = engine.world.body_at(IVec3::new(1, 0, 0)).unwrap().id;
+        engine.world.body_mut(laser_id).unwrap().anchor = IVec3::new(1, 1, 0);
         engine.world.sync_grid();
 
         // Take a turn (Wait) to trigger recalculation
         engine.apply(PlayerAction::Wait);
 
-        // The 3-bounce laser path connects: (1,0) -> (1,4) -> (5,4) -> (5,6) -> (7,6) Goal!
+        // The 3-bounce laser path connects: (1,1) -> (1,4) -> (5,4) -> (5,6) -> (7,6) Goal!
         assert_eq!(engine.outcome, GameOutcome::Won);
         assert!(engine.is_won());
     }

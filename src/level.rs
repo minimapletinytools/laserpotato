@@ -6,7 +6,7 @@
 use glam::IVec3;
 
 use crate::block_types::BlockKind;
-use crate::sim::{TagKind, TagValue, World};
+use crate::sim::{CubeRot, TagKind, TagValue, World};
 
 /// A single-cell (1×1×1) shape.
 fn unit_shape() -> Vec<IVec3> {
@@ -19,66 +19,226 @@ fn unit_shape() -> Vec<IVec3> {
 ///   Y
 ///   ^
 /// 7 | W  W  W  W  W  W  W  W  W  W
-/// 6 | W  .  .  .  .  MM2.  G  .  W      G   = Goal Pyramid at (7, 6)
-/// 5 | W  W  .  W  W  .  W  .  .  W      MM2 = Moveable Mirror (start at 4,1, push to 5,6)
-/// 4 | W  .  .  MM1.  FM .  .  .  W      FM  = Fixed Mirror at (5, 4), reflects +X → +Y
-/// 3 | W  .  .  .  .  .  .  .  .  W      MM1 = Moveable Mirror (start at 3,4, push to 1,4)
-/// 2 | W  .  P  @  .  .  .  .  .  W      P   = Moveable Crate at (1, 2)
-/// 1 | W  .  .  .  .  .  .  .  .  W      L   = Fixed Laser Source at (1, 0), fires +Y
-/// 0 | W  .  L  .  .  .  .  .  .  W      @   = Player starting at (2, 2)
-/// -1| W  W  W  W  W  W  W  W  W  W
+/// 6 | W  .  @ MM2 .  .  .  G  .  W      G   = Goal Pyramid at (7, 6)
+/// 5 | W  . MM1 .  W  .  W  .  .  W      MM2 = Moveable Mirror (start at 3,6, push East to 5,6)
+/// 4 | W  .  .  .  . FM  .  .  .  W      FM  = Fixed Mirror at (5, 4), reflects +X → +Y
+/// 3 | W  .  .  .  .  .  .  .  .  W      MM1 = Moveable Mirror (start at 2,5, push into 1,4)
+/// 2 | W  .  .  .  .  .  .  .  .  W      L   = Moveable Laser Source at (1, 0), push to (1,1)
+/// 1 | W  .  .  .  .  .  .  .  .  W      @   = Player starting at (2, 6)
+/// 0 | W  .  L  .  .  .  .  .  .  W
+/// -1| W  W  .  .  .  .  W  W  W  W
+/// -2| W  W  W  W  W  W  W  W  W  W
 ///   +------------------------------> X
 ///     -1  0  1  2  3  4  5  6  7  8
 /// ```
 pub fn test_level() -> World {
     let mut world = World::new();
 
-    // 1. Player character at (2, 2, 0)
-    world.spawn(BlockKind::Player, IVec3::new(2, 2, 0), unit_shape());
+    // 1. Player character at (2, 6, 0)
+    world.spawn(BlockKind::Player, IVec3::new(2, 6, 0), unit_shape());
 
-    // 2. Fixed Laser Source at (1, 0, 0) — emits +Y
-    let laser_id = world.spawn(BlockKind::LaserSource, IVec3::new(1, 0, 0), unit_shape());
-    world.body_mut(laser_id).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
+    // 2. Moveable Laser Source at (1, 0, 0) — emits +Y
+    world.spawn(BlockKind::LaserSource, IVec3::new(1, 0, 0), unit_shape());
 
-    // 3. Moveable Blocker Crate at (1, 2, 0) (initially caps laser beam)
-    world.spawn(BlockKind::Pushable, IVec3::new(1, 2, 0), unit_shape());
+    // 3. Moveable Mirror 1 at (2, 5, 0) — identity "/" orientation
+    world.spawn(BlockKind::Mirror, IVec3::new(2, 5, 0), unit_shape());
 
-    // 4. Moveable Mirror 1 at (3, 4, 0) — identity "/" orientation
-    world.spawn(BlockKind::Mirror, IVec3::new(3, 4, 0), unit_shape());
-
-    // 5. Fixed Mirror at (5, 4, 0) — identity "/" orientation: reflects +X → +Y
+    // 4. Fixed Mirror at (5, 4, 0) — identity "/" orientation: reflects +X → +Y
     let fixed_mirror_id = world.spawn(BlockKind::Mirror, IVec3::new(5, 4, 0), unit_shape());
     world.body_mut(fixed_mirror_id).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
 
-    // 6. Moveable Mirror 2 at (4, 1, 0) — identity "/" orientation
-    world.spawn(BlockKind::Mirror, IVec3::new(4, 1, 0), unit_shape());
+    // 5. Moveable Mirror 2 at (3, 6, 0) — identity "/" orientation
+    world.spawn(BlockKind::Mirror, IVec3::new(3, 6, 0), unit_shape());
 
-    // 7. Goal Pyramid at (7, 6, 0)
+    // 6. Goal Pyramid at (7, 6, 0)
     let goal_id = world.spawn(BlockKind::Goal, IVec3::new(7, 6, 0), unit_shape());
     world.body_mut(goal_id).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
 
-    // 8. Interior partition walls creating rooms and obstacle channels
+    // 7. Interior partition walls creating rooms and obstacle channels
     let wall_coords = [
         IVec3::new(0, 5, 0),
-        IVec3::new(2, 5, 0),
-        IVec3::new(3, 5, 0),
         IVec3::new(4, 5, 0),
+        IVec3::new(6, 5, 0),
     ];
     for pos in wall_coords {
         let wall_id = world.spawn(BlockKind::Wall, pos, unit_shape());
         world.body_mut(wall_id).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
     }
 
-    // 9. Perimeter border walls (X: -1..=8, Y: -1..=7)
+    // 8. Perimeter border walls (X: -1..=8, Y: -2..=7)
     for x in -1..=8 {
-        world.spawn(BlockKind::Wall, IVec3::new(x, -1, 0), unit_shape());
+        world.spawn(BlockKind::Wall, IVec3::new(x, -2, 0), unit_shape());
         world.spawn(BlockKind::Wall, IVec3::new(x, 7, 0), unit_shape());
     }
-    for y in 0..=6 {
+    for y in -1..=6 {
         world.spawn(BlockKind::Wall, IVec3::new(-1, y, 0), unit_shape());
         world.spawn(BlockKind::Wall, IVec3::new(8, y, 0), unit_shape());
+    }
+    // Partition wall on row -1 with open passage at x in [1..=4]
+    for x in [-1, 0, 5, 6, 7, 8] {
+        let wall_id = world.spawn(BlockKind::Wall, IVec3::new(x, -1, 0), unit_shape());
+        world.body_mut(wall_id).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
     }
 
     world.sync_grid();
     world
+}
+
+// ---------------------------------------------------------------------------
+// Level Serialization & File Management
+// ---------------------------------------------------------------------------
+
+use serde::{Deserialize, Serialize};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::path::Path;
+
+/// Serializable representation of a single block body in a puzzle level.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LevelBodyData {
+    pub kind: BlockKind,
+    pub anchor: [i32; 3],
+    pub orientation: CubeRot,
+    pub fixed: bool,
+}
+
+/// Serializable puzzle level data.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LevelData {
+    pub name: String,
+    pub bodies: Vec<LevelBodyData>,
+}
+
+impl LevelData {
+    /// Convert an active [`World`] into a [`LevelData`] snapshot.
+    pub fn from_world(name: impl Into<String>, world: &World) -> Self {
+        let mut bodies = Vec::new();
+        for body in world.bodies() {
+            bodies.push(LevelBodyData {
+                kind: body.kind,
+                anchor: [body.anchor.x, body.anchor.y, body.anchor.z],
+                orientation: body.orientation,
+                fixed: body.is_fixed(),
+            });
+        }
+        Self {
+            name: name.into(),
+            bodies,
+        }
+    }
+
+    /// Reconstruct a playable [`World`] from this [`LevelData`].
+    pub fn to_world(&self) -> World {
+        let mut world = World::new();
+        for b in &self.bodies {
+            let id = world.spawn(
+                b.kind,
+                IVec3::new(b.anchor[0], b.anchor[1], b.anchor[2]),
+                unit_shape(),
+            );
+            if let Some(body) = world.body_mut(id) {
+                body.orientation = b.orientation;
+                if b.fixed {
+                    body.tags.set(TagKind::Fixed, TagValue::Unit);
+                }
+            }
+        }
+        world.sync_grid();
+        world
+    }
+}
+
+/// Compute a 64-bit fingerprint hash of the given world state.
+///
+/// If any body's position, kind, orientation, or fixed property changes,
+/// the hash will change, allowing automatic invalidation of stale solutions.
+pub fn compute_level_hash(world: &World) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    let mut entries: Vec<(BlockKind, [i32; 3], [[i32; 3]; 3], bool)> = world
+        .bodies()
+        .iter()
+        .map(|b| {
+            (
+                b.kind,
+                [b.anchor.x, b.anchor.y, b.anchor.z],
+                b.orientation.mat,
+                b.is_fixed(),
+            )
+        })
+        .collect();
+    entries.sort();
+    entries.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// Save level data to a JSON file.
+pub fn save_level_to_file(path: impl AsRef<Path>, level: &LevelData) -> std::io::Result<()> {
+    let path = path.as_ref();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let json = serde_json::to_string_pretty(level)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    std::fs::write(path, json)
+}
+
+/// Load level data from a JSON file.
+pub fn load_level_from_file(path: impl AsRef<Path>) -> std::io::Result<LevelData> {
+    let content = std::fs::read_to_string(path)?;
+    serde_json::from_str(&content)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+}
+
+/// List all `.json` level files located in `levels/` directory.
+pub fn list_level_files() -> Vec<String> {
+    let dir = Path::new("levels");
+    if !dir.exists() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let mut files = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_file() && p.extension().and_then(|ext| ext.to_str()) == Some("json") {
+                if let Some(s) = p.to_str() {
+                    files.push(s.to_string());
+                }
+            }
+        }
+    }
+    files.sort();
+    files
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn level_serialization_round_trip() {
+        let world = test_level();
+        let level_data = LevelData::from_world("Test Level", &world);
+        let world_reconstructed = level_data.to_world();
+
+        assert_eq!(world.bodies().len(), world_reconstructed.bodies().len());
+        assert_eq!(compute_level_hash(&world), compute_level_hash(&world_reconstructed));
+    }
+
+    #[test]
+    fn modifying_body_changes_level_hash() {
+        let world1 = test_level();
+        let mut world2 = test_level();
+
+        let hash1 = compute_level_hash(&world1);
+        let hash2 = compute_level_hash(&world2);
+        assert_eq!(hash1, hash2);
+
+        // Move a block
+        let id = world2.body_at(IVec3::new(2, 6, 0)).unwrap().id;
+        world2.body_mut(id).unwrap().anchor = IVec3::new(2, 7, 0);
+        world2.sync_grid();
+
+        let hash3 = compute_level_hash(&world2);
+        assert_ne!(hash1, hash3);
+    }
 }

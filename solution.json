@@ -1,0 +1,29 @@
+{
+  "step_count": 22,
+  "status": "Found",
+  "duration_ms": 136,
+  "actions": [
+    "Backward",
+    "TurnLeft",
+    "Backward",
+    "TurnLeft",
+    "Forward",
+    "Forward",
+    "Forward",
+    "Forward",
+    "Forward",
+    "Forward",
+    "TurnLeft",
+    "Backward",
+    "Backward",
+    "TurnLeft",
+    "Forward",
+    "TurnRight",
+    "Backward",
+    "TurnLeft",
+    "Forward",
+    "TurnLeft",
+    "Backward",
+    "Backward"
+  ]
+}

@@ -1,55 +1,58 @@
 //! Keyboard → [`PlayerAction`](crate::turn::PlayerAction) translation.
 //!
-//! This is the **only** Bevy system that writes into the simulation's input
-//! channel. It produces at most one action per frame.
+//! Instantaneous direct key translation to the turn engine in Playtest mode.
 
 use bevy::prelude::*;
 
 use crate::turn::PlayerAction;
+use crate::GameState;
 
-/// Holds the pending player action for this frame, if any.
-#[derive(Resource, Default)]
-pub struct PendingAction(pub Option<PlayerAction>);
-
-/// Reads keyboard input and writes the corresponding [`PlayerAction`].
+/// Reads keyboard input and applies the corresponding [`PlayerAction`] directly with zero latency.
 ///
-/// Key mapping (from design doc):
+/// Controls:
 /// - **↑ / W** — move forward (in facing direction)
 /// - **↓ / S** — move backward (opposite facing direction)
-/// - **← / Q** — turn 90° left (counter-clockwise)
-/// - **→ / E** — turn 90° right (clockwise)
-/// - **Space** — interact
-/// - **A** — wait (counts as a turn)
-/// - **Z** — undo
+/// - **← / A / Q** — turn 90° left (counter-clockwise)
+/// - **→ / D / E** — turn 90° right (clockwise)
+/// - **Space** — wait / interact
+/// - **Z / U** — undo
 /// - **R** — reset puzzle
 pub fn keyboard_input_system(
     keys: Res<ButtonInput<KeyCode>>,
-    mut pending: ResMut<PendingAction>,
+    mut game: ResMut<GameState>,
 ) {
-    pending.0 = None;
+    let mut action = None;
 
     // Forward / backward
-    if keys.just_pressed(KeyCode::ArrowUp) {
-        pending.0 = Some(PlayerAction::Forward);
-    } else if keys.just_pressed(KeyCode::ArrowDown) {
-        pending.0 = Some(PlayerAction::Backward);
+    if keys.just_pressed(KeyCode::ArrowUp) || keys.just_pressed(KeyCode::KeyW) {
+        action = Some(PlayerAction::Forward);
+    } else if keys.just_pressed(KeyCode::ArrowDown) || keys.just_pressed(KeyCode::KeyS) {
+        action = Some(PlayerAction::Backward);
     }
     // Turn in place
-    else if keys.just_pressed(KeyCode::ArrowLeft) {
-        pending.0 = Some(PlayerAction::TurnLeft);
-    } else if keys.just_pressed(KeyCode::ArrowRight) {
-        pending.0 = Some(PlayerAction::TurnRight);
+    else if keys.just_pressed(KeyCode::ArrowLeft)
+        || keys.just_pressed(KeyCode::KeyA)
+        || keys.just_pressed(KeyCode::KeyQ)
+    {
+        action = Some(PlayerAction::TurnLeft);
+    } else if keys.just_pressed(KeyCode::ArrowRight)
+        || keys.just_pressed(KeyCode::KeyD)
+        || keys.just_pressed(KeyCode::KeyE)
+    {
+        action = Some(PlayerAction::TurnRight);
     }
     // Actions
     else if keys.just_pressed(KeyCode::Space) {
-        pending.0 = Some(PlayerAction::Interact);
-    } else if keys.just_pressed(KeyCode::KeyA) {
-        pending.0 = Some(PlayerAction::Wait);
+        action = Some(PlayerAction::Wait);
     }
     // Meta
-    else if keys.just_pressed(KeyCode::KeyZ) {
-        pending.0 = Some(PlayerAction::Undo);
+    else if keys.just_pressed(KeyCode::KeyZ) || keys.just_pressed(KeyCode::KeyU) {
+        action = Some(PlayerAction::Undo);
     } else if keys.just_pressed(KeyCode::KeyR) {
-        pending.0 = Some(PlayerAction::Reset);
+        action = Some(PlayerAction::Reset);
+    }
+
+    if let Some(act) = action {
+        game.engine.apply(act);
     }
 }

@@ -592,19 +592,47 @@ pub fn sync_bodies(
             transform.translation = sim_to_bevy(body.anchor);
             transform.rotation = cube_rot_to_quat(&body.orientation);
 
-            // Update dynamic materials based on win / loss outcome
-            if body.kind == BlockKind::Goal {
-                mat_handle.0 = if game.engine.is_won() {
-                    assets.goal_won_mat.clone()
-                } else {
-                    assets.goal_mat.clone()
-                };
-            } else if body.kind == BlockKind::Player {
-                mat_handle.0 = if game.engine.is_lost() {
-                    assets.player_burnt_mat.clone()
-                } else {
-                    assets.player_mat.clone()
-                };
+            // Update dynamic materials based on win / loss / fixed / moveable state
+            let is_moveable = body.is_pushable();
+            match body.kind {
+                BlockKind::Goal => {
+                    mat_handle.0 = if game.engine.is_won() {
+                        assets.goal_won_mat.clone()
+                    } else {
+                        assets.goal_mat.clone()
+                    };
+                }
+                BlockKind::Player => {
+                    mat_handle.0 = if game.engine.is_lost() {
+                        assets.player_burnt_mat.clone()
+                    } else {
+                        assets.player_mat.clone()
+                    };
+                }
+                BlockKind::Wall => {
+                    mat_handle.0 = assets.fixed_wall_mat.clone();
+                }
+                BlockKind::Pushable => {
+                    mat_handle.0 = if is_moveable {
+                        assets.moveable_pushable_mat.clone()
+                    } else {
+                        assets.fixed_pushable_mat.clone()
+                    };
+                }
+                BlockKind::Mirror => {
+                    mat_handle.0 = if is_moveable {
+                        assets.moveable_mirror_mat.clone()
+                    } else {
+                        assets.fixed_mirror_mat.clone()
+                    };
+                }
+                BlockKind::LaserSource => {
+                    mat_handle.0 = if is_moveable {
+                        assets.moveable_laser_mat.clone()
+                    } else {
+                        assets.fixed_laser_mat.clone()
+                    };
+                }
             }
 
             seen.insert(link.0);

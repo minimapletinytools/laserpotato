@@ -17,17 +17,23 @@ use crate::block_types::BlockKind;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct BodyId(pub u32);
 
+use serde::{Deserialize, Serialize};
+
 /// One of the 24 rotations of a cube, stored as an orthogonal integer matrix
 /// (row `r` says where world-axis `r` gets its value from in local space).
 /// A matrix instead of a lookup table means new orientations compose
 /// naturally via matrix multiplication as a body physically rotates 90° at a
 /// time, rather than needing a hand-enumerated 24-entry table.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct CubeRot {
-    mat: [[i32; 3]; 3],
+    pub mat: [[i32; 3]; 3],
 }
 
 impl CubeRot {
+    pub const fn from_matrix(mat: [[i32; 3]; 3]) -> Self {
+        Self { mat }
+    }
+
     pub const IDENTITY: CubeRot = CubeRot {
         mat: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
     };
@@ -238,6 +244,11 @@ impl Body {
         }
         self.kind.is_pushable()
     }
+
+    /// Whether this specific body is fixed/stationary.
+    pub fn is_fixed(&self) -> bool {
+        self.tags.has(TagKind::Fixed) || matches!(self.kind, BlockKind::Wall | BlockKind::Goal)
+    }
 }
 
 /// Spatial occupancy index over [`Body`] cells.
@@ -335,6 +346,15 @@ impl World {
     pub fn body_at(&self, pos: IVec3) -> Option<&Body> {
         let id = self.grid.occupant_at(pos)?;
         self.body(id)
+    }
+
+    /// Despawn and remove a body by ID from the simulation.
+    pub fn despawn(&mut self, id: BodyId) {
+        if self.player_id == Some(id) {
+            self.player_id = None;
+        }
+        self.bodies.retain(|b| b.id != id);
+        self.grid.rebuild(&self.bodies);
     }
 
     /// Call after directly mutating body positions/orientations to keep the

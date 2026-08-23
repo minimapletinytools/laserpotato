@@ -3,11 +3,12 @@
 //! [`BlockKind`] captures the *type identity* of a block. Per-instance mutable
 //! state (e.g. "has been hit by a laser 2 times") lives in [`super::sim::TagSet`].
 
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// The fixed type identity of a block, determining its behavior during
 /// turn resolution (pushability, solidity, laser interactions).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum BlockKind {
     /// The player-controlled character.
     Player,

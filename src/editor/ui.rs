@@ -1,0 +1,623 @@
+//! Bevy UI layouts, buttons, and visual panels for the Level Editor.
+
+use bevy::prelude::*;
+use crate::block_types::BlockKind;
+use super::{AppMode, EditorAction, EditorState};
+
+// ---------------------------------------------------------------------------
+// UI Component Markers
+// ---------------------------------------------------------------------------
+
+#[derive(Component)]
+pub struct EditorRootUi;
+
+#[derive(Component)]
+pub struct PaletteButton(pub BlockKind);
+
+#[derive(Component)]
+pub struct PropertyToggleButton(pub bool); // true = fixed, false = moveable
+
+#[derive(Component)]
+pub struct InspectorPanel;
+
+#[derive(Component)]
+pub struct InspectorText;
+
+#[derive(Component)]
+pub struct RotateCwButton;
+
+#[derive(Component)]
+pub struct RotateCcwButton;
+
+#[derive(Component)]
+pub struct ToggleFixedButton;
+
+#[derive(Component)]
+pub struct DeleteBlockButton;
+
+#[derive(Component)]
+pub struct ActionButton(pub EditorAction);
+
+#[derive(Component)]
+pub struct SolverStatusBadge;
+
+#[derive(Component)]
+pub struct ToastNotificationText;
+
+#[derive(Component)]
+pub struct PalettePreviewLabel;
+
+// ---------------------------------------------------------------------------
+// Colors & Styling Constants
+// ---------------------------------------------------------------------------
+
+pub const PANEL_BG: Color = Color::srgba(0.08, 0.08, 0.12, 0.94);
+pub const BTN_NORMAL: Color = Color::srgba(0.18, 0.18, 0.24, 0.90);
+pub const BTN_ACTIVE: Color = Color::srgba(0.22, 0.50, 0.85, 1.0);
+pub const BTN_DISABLED: Color = Color::srgba(0.12, 0.12, 0.14, 0.50);
+pub const BTN_SUCCESS: Color = Color::srgba(0.15, 0.55, 0.35, 1.0);
+pub const BTN_DANGER: Color = Color::srgba(0.65, 0.20, 0.20, 1.0);
+pub const TEXT_PRIMARY: Color = Color::srgb(0.92, 0.92, 0.96);
+pub const TEXT_MUTED: Color = Color::srgb(0.60, 0.60, 0.68);
+
+// ---------------------------------------------------------------------------
+// Setup Editor UI
+// ---------------------------------------------------------------------------
+
+pub fn setup_editor_ui(mut commands: Commands) {
+    commands
+        .spawn((
+            EditorRootUi,
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::SpaceBetween,
+                ..default()
+            },
+        ))
+        .with_children(|root| {
+            // ===============================================================
+            // TOP ACTION BAR
+            // ===============================================================
+            root.spawn((
+                Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Px(52.0),
+                    padding: UiRect::axes(Val::Px(16.0), Val::Px(8.0)),
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::SpaceBetween,
+                    ..default()
+                },
+                BackgroundColor(PANEL_BG),
+            ))
+            .with_children(|top_bar| {
+                // Left group: File management
+                top_bar
+                    .spawn(Node {
+                        column_gap: Val::Px(8.0),
+                        align_items: AlignItems::Center,
+                        ..default()
+                    })
+                    .with_children(|group| {
+                        group.spawn((
+                            Text::new("LASER POTATO EDITOR"),
+                            TextFont::from_font_size(15.0),
+                            TextColor(Color::srgb(0.9, 0.8, 0.3)),
+                        ));
+
+                        spawn_action_btn(group, EditorAction::NewLevel, "New Level");
+                        spawn_action_btn(group, EditorAction::Save, "Save");
+                        spawn_action_btn(group, EditorAction::SaveAs, "Save As...");
+                        spawn_action_btn(group, EditorAction::ToggleLevelsMenu, "📂 Levels");
+                    });
+
+                // Center group: Solver badge & Attempt to Solve
+                top_bar
+                    .spawn(Node {
+                        column_gap: Val::Px(10.0),
+                        align_items: AlignItems::Center,
+                        ..default()
+                    })
+                    .with_children(|group| {
+                        group.spawn((
+                            SolverStatusBadge,
+                            Text::new("Solver: Idle"),
+                            TextFont::from_font_size(13.0),
+                            TextColor(TEXT_MUTED),
+                        ));
+                        spawn_action_btn(group, EditorAction::AttemptSolve, "⚡ Attempt to Solve");
+                    });
+
+                // Right group: Playtest & Replay Mode controls
+                top_bar
+                    .spawn(Node {
+                        column_gap: Val::Px(8.0),
+                        align_items: AlignItems::Center,
+                        ..default()
+                    })
+                    .with_children(|group| {
+                        spawn_action_btn(group, EditorAction::TestPlay, "▶ Test Play");
+                        spawn_action_btn(group, EditorAction::TestWithSolution, "★ Test with Solution");
+                    });
+            });
+
+            // ===============================================================
+            // MAIN MIDDLE WORKSPACE (Left Palette + Right Inspector)
+            // ===============================================================
+            root.spawn(Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                justify_content: JustifyContent::SpaceBetween,
+                align_items: AlignItems::FlexStart,
+                padding: UiRect::all(Val::Px(12.0)),
+                ..default()
+            })
+            .with_children(|workspace| {
+                // -----------------------------------------------------------
+                // LEFT SIDEBAR: BLOCK PALETTE & PROPERTY SELECTOR
+                // -----------------------------------------------------------
+                workspace
+                    .spawn((
+                        Node {
+                            width: Val::Px(240.0),
+                            flex_direction: FlexDirection::Column,
+                            padding: UiRect::all(Val::Px(12.0)),
+                            row_gap: Val::Px(8.0),
+                            ..default()
+                        },
+                        BackgroundColor(PANEL_BG),
+                    ))
+                    .with_children(|sidebar| {
+                        sidebar.spawn((
+                            Text::new("BLOCK PALETTE"),
+                            TextFont::from_font_size(13.0),
+                            TextColor(TEXT_PRIMARY),
+                        ));
+
+                        // 3D Preview Frame Box
+                        sidebar
+                            .spawn((
+                                Node {
+                                    width: Val::Percent(100.0),
+                                    height: Val::Px(80.0),
+                                    padding: UiRect::all(Val::Px(6.0)),
+                                    justify_content: JustifyContent::SpaceBetween,
+                                    align_items: AlignItems::Start,
+                                    flex_direction: FlexDirection::Column,
+                                    border: UiRect::all(Val::Px(1.0)),
+                                    ..default()
+                                },
+                                BorderColor::all(Color::srgba(0.3, 0.5, 0.8, 0.5)),
+                                BackgroundColor(Color::srgba(0.04, 0.04, 0.06, 0.90)),
+                            ))
+                            .with_children(|box_node| {
+                                box_node.spawn((
+                                    Text::new("3D PREVIEW"),
+                                    TextFont::from_font_size(10.0),
+                                    TextColor(Color::srgb(0.5, 0.8, 1.0)),
+                                ));
+                                box_node.spawn((
+                                    PalettePreviewLabel,
+                                    Text::new("🪞 Mirror (Moveable)"),
+                                    TextFont::from_font_size(11.0),
+                                    TextColor(TEXT_PRIMARY),
+                                ));
+                            });
+
+                        // Base Block Buttons
+                        let blocks = [
+                            (BlockKind::Player, "👤 Player"),
+                            (BlockKind::Mirror, "🪞 Mirror"),
+                            (BlockKind::LaserSource, "🔴 Laser Source"),
+                            (BlockKind::Pushable, "📦 Pushable Crate"),
+                            (BlockKind::Wall, "🧱 Wall"),
+                            (BlockKind::Goal, "⭐ Goal Pyramid"),
+                        ];
+
+                        for (kind, label) in blocks {
+                            sidebar
+                                .spawn((
+                                    PaletteButton(kind),
+                                    Button,
+                                    Node {
+                                        width: Val::Percent(100.0),
+                                        padding: UiRect::axes(Val::Px(8.0), Val::Px(6.0)),
+                                        justify_content: JustifyContent::Start,
+                                        align_items: AlignItems::Center,
+                                        ..default()
+                                    },
+                                    BackgroundColor(BTN_NORMAL),
+                                ))
+                                .with_children(|btn| {
+                                    btn.spawn((
+                                        Text::new(label),
+                                        TextFont::from_font_size(12.0),
+                                        TextColor(TEXT_PRIMARY),
+                                    ));
+                                });
+                        }
+
+                        // Placement Property Selector
+                        sidebar.spawn((
+                            Text::new("PLACEMENT PROPERTY"),
+                            TextFont::from_font_size(12.0),
+                            TextColor(TEXT_MUTED),
+                        ));
+
+                        sidebar
+                            .spawn(Node {
+                                width: Val::Percent(100.0),
+                                column_gap: Val::Px(6.0),
+                                ..default()
+                            })
+                            .with_children(|prop_row| {
+                                prop_row
+                                    .spawn((
+                                        PropertyToggleButton(false), // Moveable
+                                        Button,
+                                        Node {
+                                            flex_grow: 1.0,
+                                            padding: UiRect::axes(Val::Px(6.0), Val::Px(6.0)),
+                                            justify_content: JustifyContent::Center,
+                                            align_items: AlignItems::Center,
+                                            ..default()
+                                        },
+                                        BackgroundColor(BTN_NORMAL),
+                                    ))
+                                    .with_children(|btn| {
+                                        btn.spawn((
+                                            Text::new("Moveable"),
+                                            TextFont::from_font_size(12.0),
+                                            TextColor(TEXT_PRIMARY),
+                                        ));
+                                    });
+
+                                prop_row
+                                    .spawn((
+                                        PropertyToggleButton(true), // Stationary
+                                        Button,
+                                        Node {
+                                            flex_grow: 1.0,
+                                            padding: UiRect::axes(Val::Px(6.0), Val::Px(6.0)),
+                                            justify_content: JustifyContent::Center,
+                                            align_items: AlignItems::Center,
+                                            ..default()
+                                        },
+                                        BackgroundColor(BTN_NORMAL),
+                                    ))
+                                    .with_children(|btn| {
+                                        btn.spawn((
+                                            Text::new("Stationary"),
+                                            TextFont::from_font_size(12.0),
+                                            TextColor(TEXT_PRIMARY),
+                                        ));
+                                    });
+                            });
+
+                        // Instructions / shortcuts hint
+                        sidebar.spawn((
+                            Text::new("Controls:\n• L-Click: Place / Select\n• R-Click: Delete Block\n• WASD: Pan Camera\n• Scroll: Zoom In/Out"),
+                            TextFont::from_font_size(11.0),
+                            TextColor(TEXT_MUTED),
+                        ));
+                    });
+
+                // -----------------------------------------------------------
+                // RIGHT FLOATING INSPECTOR PANEL (Visible when block is selected)
+                // -----------------------------------------------------------
+                workspace
+                    .spawn((
+                        InspectorPanel,
+                        Node {
+                            width: Val::Px(240.0),
+                            flex_direction: FlexDirection::Column,
+                            padding: UiRect::all(Val::Px(12.0)),
+                            row_gap: Val::Px(10.0),
+                            ..default()
+                        },
+                        BackgroundColor(PANEL_BG),
+                    ))
+                    .with_children(|inspector| {
+                        inspector.spawn((
+                            Text::new("BLOCK INSPECTOR"),
+                            TextFont::from_font_size(13.0),
+                            TextColor(TEXT_PRIMARY),
+                        ));
+
+                        inspector.spawn((
+                            InspectorText,
+                            Text::new("Click a block in the 3D grid to select and modify its properties."),
+                            TextFont::from_font_size(12.0),
+                            TextColor(TEXT_MUTED),
+                        ));
+
+                        // Rotation Controls
+                        inspector
+                            .spawn(Node {
+                                width: Val::Percent(100.0),
+                                column_gap: Val::Px(6.0),
+                                ..default()
+                            })
+                            .with_children(|row| {
+                                row.spawn((
+                                    RotateCcwButton,
+                                    Button,
+                                    Node {
+                                        flex_grow: 1.0,
+                                        padding: UiRect::axes(Val::Px(6.0), Val::Px(6.0)),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
+                                        ..default()
+                                    },
+                                    BackgroundColor(BTN_NORMAL),
+                                ))
+                                .with_children(|btn| {
+                                    btn.spawn((
+                                        Text::new("↺ CCW (Z+90)"),
+                                        TextFont::from_font_size(11.0),
+                                        TextColor(TEXT_PRIMARY),
+                                    ));
+                                });
+
+                                row.spawn((
+                                    RotateCwButton,
+                                    Button,
+                                    Node {
+                                        flex_grow: 1.0,
+                                        padding: UiRect::axes(Val::Px(6.0), Val::Px(6.0)),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
+                                        ..default()
+                                    },
+                                    BackgroundColor(BTN_NORMAL),
+                                ))
+                                .with_children(|btn| {
+                                    btn.spawn((
+                                        Text::new("↻ CW (Z-90)"),
+                                        TextFont::from_font_size(11.0),
+                                        TextColor(TEXT_PRIMARY),
+                                    ));
+                                });
+                            });
+
+                        // Property Toggle Button
+                        inspector
+                            .spawn((
+                                ToggleFixedButton,
+                                Button,
+                                Node {
+                                    width: Val::Percent(100.0),
+                                    padding: UiRect::axes(Val::Px(8.0), Val::Px(6.0)),
+                                    justify_content: JustifyContent::Center,
+                                    align_items: AlignItems::Center,
+                                    ..default()
+                                },
+                                BackgroundColor(BTN_NORMAL),
+                            ))
+                            .with_children(|btn| {
+                                btn.spawn((
+                                    Text::new("Toggle Fixed / Moveable"),
+                                    TextFont::from_font_size(12.0),
+                                    TextColor(TEXT_PRIMARY),
+                                ));
+                            });
+
+                        // Delete Block Button
+                        inspector
+                            .spawn((
+                                DeleteBlockButton,
+                                Button,
+                                Node {
+                                    width: Val::Percent(100.0),
+                                    padding: UiRect::axes(Val::Px(8.0), Val::Px(6.0)),
+                                    justify_content: JustifyContent::Center,
+                                    align_items: AlignItems::Center,
+                                    ..default()
+                                },
+                                BackgroundColor(BTN_DANGER),
+                            ))
+                            .with_children(|btn| {
+                                btn.spawn((
+                                    Text::new("🗑 Delete Block"),
+                                    TextFont::from_font_size(12.0),
+                                    TextColor(TEXT_PRIMARY),
+                                ));
+                            });
+                    });
+            });
+
+            // ===============================================================
+            // BOTTOM STATUS & TOAST BAR
+            // ===============================================================
+            root.spawn((
+                Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Px(28.0),
+                    padding: UiRect::axes(Val::Px(16.0), Val::Px(4.0)),
+                    align_items: AlignItems::Center,
+                    ..default()
+                },
+                BackgroundColor(PANEL_BG),
+            ))
+            .with_children(|bottom| {
+                bottom.spawn((
+                    ToastNotificationText,
+                    Text::new("Ready. Select block from palette to place on grid."),
+                    TextFont::from_font_size(12.0),
+                    TextColor(TEXT_MUTED),
+                ));
+            });
+        });
+}
+
+fn spawn_action_btn(parent: &mut ChildSpawnerCommands, action: EditorAction, label: &str) {
+    parent
+        .spawn((
+            ActionButton(action),
+            Button,
+            Node {
+                padding: UiRect::axes(Val::Px(10.0), Val::Px(6.0)),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(BTN_NORMAL),
+        ))
+        .with_children(|btn| {
+            btn.spawn((
+                Text::new(label),
+                TextFont::from_font_size(12.0),
+                TextColor(TEXT_PRIMARY),
+            ));
+        });
+}
+
+// ---------------------------------------------------------------------------
+// Dynamic UI Update System
+// ---------------------------------------------------------------------------
+
+pub fn update_editor_ui_system(
+    app_mode: Res<State<AppMode>>,
+    editor: Res<EditorState>,
+    game: Res<crate::GameState>,
+    mut root_query: Query<&mut Visibility, With<EditorRootUi>>,
+    mut palette_query: Query<(&PaletteButton, &mut BackgroundColor), Without<PropertyToggleButton>>,
+    mut prop_query: Query<(&PropertyToggleButton, &mut BackgroundColor), Without<PaletteButton>>,
+    mut inspector_text_query: Query<&mut Text, (With<InspectorText>, Without<SolverStatusBadge>, Without<ToastNotificationText>, Without<PalettePreviewLabel>)>,
+    mut solver_badge_query: Query<(&mut Text, &mut TextColor), (With<SolverStatusBadge>, Without<InspectorText>, Without<ToastNotificationText>, Without<PalettePreviewLabel>)>,
+    mut toast_query: Query<&mut Text, (With<ToastNotificationText>, Without<InspectorText>, Without<SolverStatusBadge>, Without<PalettePreviewLabel>)>,
+    mut preview_label_query: Query<&mut Text, (With<PalettePreviewLabel>, Without<InspectorText>, Without<SolverStatusBadge>, Without<ToastNotificationText>)>,
+    mut action_btns_query: Query<(&ActionButton, &mut BackgroundColor), (Without<PaletteButton>, Without<PropertyToggleButton>)>,
+) {
+    // Show UI only in Editor mode
+    for mut vis in &mut root_query {
+        *vis = if *app_mode.get() == AppMode::Editor {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+    }
+
+    if *app_mode.get() != AppMode::Editor {
+        return;
+    }
+
+    // 1. Update Palette 3D Preview Label
+    for mut text in &mut preview_label_query {
+        let (can_moveable, can_fixed) = editor.allowed_fixed_state(editor.selected_kind);
+        let is_fixed = if !can_moveable {
+            true
+        } else if !can_fixed {
+            false
+        } else {
+            editor.is_fixed
+        };
+        let prop_str = if is_fixed { "Stationary" } else { "Moveable" };
+        let icon_name = match editor.selected_kind {
+            BlockKind::Player => "👤 Player".into(),
+            BlockKind::Mirror => format!("🪞 Mirror ({})", prop_str),
+            BlockKind::LaserSource => format!("🔴 Laser ({})", prop_str),
+            BlockKind::Pushable => format!("📦 Crate ({})", prop_str),
+            BlockKind::Wall => "🧱 Wall (Stationary)".into(),
+            BlockKind::Goal => "⭐ Goal (Stationary)".into(),
+        };
+        text.0 = icon_name;
+    }
+
+    // 2. Highlight active palette button
+    for (palette_btn, mut bg) in &mut palette_query {
+        bg.0 = if palette_btn.0 == editor.selected_kind {
+            BTN_ACTIVE
+        } else {
+            BTN_NORMAL
+        };
+    }
+
+    // 3. Highlight active property button & disable invalid ones
+    let (can_moveable, can_fixed) = editor.allowed_fixed_state(editor.selected_kind);
+    for (prop_btn, mut bg) in &mut prop_query {
+        let is_fixed_btn = prop_btn.0;
+        if is_fixed_btn {
+            if !can_fixed {
+                bg.0 = BTN_DISABLED;
+            } else if editor.is_fixed {
+                bg.0 = BTN_ACTIVE;
+            } else {
+                bg.0 = BTN_NORMAL;
+            }
+        } else {
+            if !can_moveable {
+                bg.0 = BTN_DISABLED;
+            } else if !editor.is_fixed {
+                bg.0 = BTN_ACTIVE;
+            } else {
+                bg.0 = BTN_NORMAL;
+            }
+        }
+    }
+
+    // 4. Update Inspector details
+    for mut text in &mut inspector_text_query {
+        if let Some(body_id) = editor.selected_body_id {
+            if let Some(body) = game.engine.world.body(body_id) {
+                let fixed_str = if body.is_fixed() { "Stationary (Fixed)" } else { "Moveable" };
+                text.0 = format!(
+                    "Type: {:?}\nPosition: ({}, {}, {})\nStatus: {}\nRotation: 0° / 90°",
+                    body.kind, body.anchor.x, body.anchor.y, body.anchor.z, fixed_str
+                );
+            } else {
+                text.0 = "No block selected.\nClick a block in the grid to inspect.".into();
+            }
+        } else {
+            text.0 = "No block selected.\nClick a block in the grid to inspect.".into();
+        }
+    }
+
+    // 5. Update Solver Status Badge
+    for (mut text, mut color) in &mut solver_badge_query {
+        text.0 = format!("Solver: {}", editor.solver_status);
+        if editor.solver_status.starts_with('✓') {
+            color.0 = Color::srgb(0.3, 1.0, 0.6);
+        } else if editor.solver_status.starts_with('✗') {
+            color.0 = Color::srgb(1.0, 0.4, 0.4);
+        } else if editor.solver_status.starts_with("Solving") {
+            color.0 = Color::srgb(1.0, 0.8, 0.2);
+        } else {
+            color.0 = TEXT_MUTED;
+        }
+    }
+
+    // 6. Update Toast / Status Bar
+    let current_hash = crate::level::compute_level_hash(&game.engine.world);
+    let cached_valid = editor
+        .cached_solution
+        .as_ref()
+        .map(|(h, _)| *h == current_hash)
+        .unwrap_or(false);
+
+    for mut text in &mut toast_query {
+        if let Some((msg, _)) = &editor.status_message {
+            text.0 = msg.clone();
+        } else {
+            text.0 = format!(
+                "Level: {} | Hash: 0x{:08x} | Blocks: {} | Solution Ready: {}",
+                editor.current_level_path,
+                current_hash,
+                game.engine.world.bodies().len(),
+                if cached_valid { "YES" } else { "NO" }
+            );
+        }
+    }
+
+    // 7. Highlight "Test with Solution" button if solution is ready
+    for (action_btn, mut bg) in &mut action_btns_query {
+        if action_btn.0 == EditorAction::TestWithSolution {
+            bg.0 = if cached_valid {
+                BTN_SUCCESS
+            } else {
+                BTN_DISABLED
+            };
+        }
+    }
+}
