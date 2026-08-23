@@ -31,7 +31,7 @@ impl CompactBodyState {
             anchor_x: body.anchor.x,
             anchor_y: body.anchor.y,
             anchor_z: body.anchor.z,
-            orientation: body.orientation,
+            orientation: body.canonical_orientation(),
             tags_hash,
         }
     }
@@ -133,6 +133,25 @@ mod tests {
         assert_ne!(
             CanonicalState::from_world(&w1),
             CanonicalState::from_world(&w2)
+        );
+    }
+
+    #[test]
+    fn rotating_or_flipping_isotropic_crate_produces_identical_canonical_state() {
+        let mut w1 = World::new();
+        w1.spawn(BlockKind::Player, IVec3::ZERO, vec![IVec3::ZERO]);
+        let c1 = w1.spawn(BlockKind::Pushable, IVec3::new(2, 0, 0), vec![IVec3::ZERO]);
+        w1.body_mut(c1).unwrap().orientation = CubeRot::IDENTITY;
+
+        let mut w2 = World::new();
+        w2.spawn(BlockKind::Player, IVec3::ZERO, vec![IVec3::ZERO]);
+        let c2 = w2.spawn(BlockKind::Pushable, IVec3::new(2, 0, 0), vec![IVec3::ZERO]);
+        w2.body_mut(c2).unwrap().orientation = CubeRot::REFLECT_X.then(CubeRot::ROT_Z_270);
+
+        assert_eq!(
+            CanonicalState::from_world(&w1),
+            CanonicalState::from_world(&w2),
+            "Flipping/rotating an isotropic pushable crate must produce the identical canonical state"
         );
     }
 }

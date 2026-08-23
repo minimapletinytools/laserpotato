@@ -19,16 +19,16 @@ const MAX_FIXPOINT_PASSES: usize = 16;
 // Public types
 // ---------------------------------------------------------------------------
 
+pub use crate::block_types::{PlayerMovementMode, DEFAULT_PLAYER_MOVEMENT_MODE};
+
 /// A player action for a single turn.
 ///
-/// Movement uses tank controls:
-/// - **Left / Right** turn the player 90° in place (no translation).
-/// - **Forward** steps 1 cell in the current facing direction.
-/// - **Backward** steps 1 cell opposite to the current facing direction.
-///
-/// Every action (including blocked moves and turns in place) counts as a
-/// turn and is pushed onto the undo stack.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Behavior adapts dynamically based on the player block's [`PlayerMovementMode`]:
+/// - **Tank**: Left/Right turn in place; Up/Down step forward/backward.
+/// - **Strafe**: Directional keys step in cardinal directions without turning.
+/// - **TurnAndMove**: Directional keys turn to face the direction and step.
+/// - **TurnAndMoveBackstep**: Directional keys turn and step, but reverse direction steps backward without turning.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PlayerAction {
     /// Step 1 cell in the current facing direction.
     Forward,
@@ -38,9 +38,17 @@ pub enum PlayerAction {
     TurnLeft,
     /// Rotate 90° clockwise (looking down from +Z in sim).
     TurnRight,
+    /// Directional move intent: North (+Y in world space).
+    MoveNorth,
+    /// Directional move intent: South (-Y in world space).
+    MoveSouth,
+    /// Directional move intent: West (-X in world space).
+    MoveWest,
+    /// Directional move intent: East (+X in world space).
+    MoveEast,
     /// Interact with whatever is in front of the player.
     Interact,
-    /// Wait in place — still counts as a turn (design doc §player character).
+    /// Wait in place — still counts as a turn.
     Wait,
     /// Undo the last turn.
     Undo,
@@ -55,6 +63,10 @@ impl PlayerAction {
             PlayerAction::Backward => "Backward",
             PlayerAction::TurnLeft => "TurnLeft",
             PlayerAction::TurnRight => "TurnRight",
+            PlayerAction::MoveNorth => "MoveNorth",
+            PlayerAction::MoveSouth => "MoveSouth",
+            PlayerAction::MoveWest => "MoveWest",
+            PlayerAction::MoveEast => "MoveEast",
             PlayerAction::Interact => "Interact",
             PlayerAction::Wait => "Wait",
             PlayerAction::Undo => "Undo",
@@ -64,14 +76,18 @@ impl PlayerAction {
 
     pub fn from_str(s: &str) -> Option<Self> {
         match s.trim().to_lowercase().as_str() {
-            "forward" => Some(PlayerAction::Forward),
-            "backward" => Some(PlayerAction::Backward),
-            "turnleft" | "turn_left" | "left" => Some(PlayerAction::TurnLeft),
-            "turnright" | "turn_right" | "right" => Some(PlayerAction::TurnRight),
+            "forward" | "up" | "w" => Some(PlayerAction::Forward),
+            "backward" | "down" | "s" => Some(PlayerAction::Backward),
+            "turnleft" | "turn_left" | "q" => Some(PlayerAction::TurnLeft),
+            "turnright" | "turn_right" | "e" => Some(PlayerAction::TurnRight),
+            "movenorth" | "move_north" | "north" => Some(PlayerAction::MoveNorth),
+            "movesouth" | "move_south" | "south" => Some(PlayerAction::MoveSouth),
+            "movewest" | "move_west" | "west" => Some(PlayerAction::MoveWest),
+            "moveeast" | "move_east" | "east" => Some(PlayerAction::MoveEast),
             "interact" => Some(PlayerAction::Interact),
-            "wait" => Some(PlayerAction::Wait),
-            "undo" => Some(PlayerAction::Undo),
-            "reset" => Some(PlayerAction::Reset),
+            "wait" | "space" => Some(PlayerAction::Wait),
+            "undo" | "z" | "u" => Some(PlayerAction::Undo),
+            "reset" | "r" => Some(PlayerAction::Reset),
             _ => None,
         }
     }
@@ -221,6 +237,13 @@ impl TurnEngine {
             None => return,
         };
 
+        let mode = self
+            .world
+            .body(player_id)
+            .map(|b| b.properties().player_movement_mode)
+            .unwrap_or_default();
+        let facing = self.player_facing(player_id);
+
         match action {
             PlayerAction::TurnLeft => {
                 let body = self.world.body_mut(player_id).unwrap();
@@ -231,14 +254,58 @@ impl TurnEngine {
                 body.orientation = body.orientation.then(CubeRot::ROT_Z_270);
             }
             PlayerAction::Forward => {
-                let facing = self.player_facing(player_id);
                 self.try_step(player_id, facing);
             }
             PlayerAction::Backward => {
-                let facing = self.player_facing(player_id);
                 self.try_step(player_id, -facing);
             }
+            PlayerAction::MoveNorth => self.handle_directional_move(player_id, IVec3::Y, mode),
+            PlayerAction::MoveSouth => self.handle_directional_move(player_id, -IVec3::Y, mode),
+            PlayerAction::MoveWest => self.handle_directional_move(player_id, -IVec3::X, mode),
+            PlayerAction::MoveEast => self.handle_directional_move(player_id, IVec3::X, mode),
             _ => {} // Wait / Interact — no movement
+        }
+    }
+
+    /// Handle directional movement input according to the player's active [`PlayerMovementMode`].
+    fn handle_directional_move(&mut self, player_id: BodyId, dir: IVec3, mode: PlayerMovementMode) {
+        let current_facing = self.player_facing(player_id);
+
+        match mode {
+            PlayerMovementMode::Tank => {
+                // Mode 1: Tank Controls
+                if dir == current_facing {
+                    self.try_step(player_id, current_facing);
+                } else if dir == -current_facing {
+                    self.try_step(player_id, -current_facing);
+                } else {
+                    // Turn to face the requested direction in place
+                    let body = self.world.body_mut(player_id).unwrap();
+                    body.orientation = CubeRot::from_facing_2d(dir);
+                }
+            }
+            PlayerMovementMode::Strafe => {
+                // Mode 2: Direct translation in dir without altering facing orientation
+                self.try_step(player_id, dir);
+            }
+            PlayerMovementMode::TurnAndMove => {
+                // Mode 3: Turn & Move (Always face the direction of movement)
+                let body = self.world.body_mut(player_id).unwrap();
+                body.orientation = CubeRot::from_facing_2d(dir);
+                self.try_step(player_id, dir);
+            }
+            PlayerMovementMode::TurnAndMoveBackstep => {
+                // Mode 4: Turn & Move with Backstep on Opposite Direction
+                if dir == -current_facing {
+                    // Exact reverse direction: step backward without turning
+                    self.try_step(player_id, dir);
+                } else {
+                    // Forward or orthogonal: turn to face dir and step
+                    let body = self.world.body_mut(player_id).unwrap();
+                    body.orientation = CubeRot::from_facing_2d(dir);
+                    self.try_step(player_id, dir);
+                }
+            }
         }
     }
 
@@ -504,5 +571,89 @@ mod tests {
         // The 3-bounce laser path connects: (1,1) -> (1,4) -> (5,4) -> (5,6) -> (7,6) Goal!
         assert_eq!(engine.outcome, GameOutcome::Won);
         assert!(engine.is_won());
+    }
+
+    #[test]
+    fn movement_mode_tank() {
+        let mut world = World::new();
+        world.spawn(BlockKind::Player, IVec3::ZERO, vec![IVec3::ZERO]);
+        let mut engine = TurnEngine::new(world);
+
+        // Facing North (+Y) initially
+        assert_eq!(player_facing(&engine), IVec3::Y);
+
+        // MoveNorth: steps forward to (0, 1)
+        engine.apply(PlayerAction::MoveNorth);
+        assert_eq!(player_body(&engine).anchor, IVec3::new(0, 1, 0));
+        assert_eq!(player_facing(&engine), IVec3::Y);
+
+        // MoveWest: turns left to face West (-X), stays at (0, 1)
+        engine.apply(PlayerAction::MoveWest);
+        assert_eq!(player_body(&engine).anchor, IVec3::new(0, 1, 0));
+        assert_eq!(player_facing(&engine), IVec3::NEG_X);
+    }
+
+    #[test]
+    fn movement_mode_strafe() {
+        let mut world = World::new();
+        world.spawn(BlockKind::Player, IVec3::ZERO, vec![IVec3::ZERO]);
+        let mut engine = TurnEngine::new(world);
+        let p_id = engine.world.player_id().unwrap();
+
+        // 1. Move North (+Y): steps to (0, 1) without turning (facing remains North)
+        engine.handle_directional_move(p_id, IVec3::Y, PlayerMovementMode::Strafe);
+        assert_eq!(player_body(&engine).anchor, IVec3::new(0, 1, 0));
+        assert_eq!(player_facing(&engine), IVec3::Y);
+
+        // 2. Move West (-X): steps to (-1, 1) without turning (facing remains North)
+        engine.handle_directional_move(p_id, IVec3::NEG_X, PlayerMovementMode::Strafe);
+        assert_eq!(player_body(&engine).anchor, IVec3::new(-1, 1, 0));
+        assert_eq!(player_facing(&engine), IVec3::Y, "Facing should remain North in Strafe mode");
+    }
+
+    #[test]
+    fn movement_mode_turn_and_move() {
+        let mut world = World::new();
+        world.spawn(BlockKind::Player, IVec3::ZERO, vec![IVec3::ZERO]);
+        let mut engine = TurnEngine::new(world);
+        let p_id = engine.world.player_id().unwrap();
+
+        // 1. Move East: turns East (+X) and steps to (1, 0)
+        engine.handle_directional_move(p_id, IVec3::X, PlayerMovementMode::TurnAndMove);
+        assert_eq!(player_body(&engine).anchor, IVec3::new(1, 0, 0));
+        assert_eq!(player_facing(&engine), IVec3::X);
+
+        // 2. Move West (reverse direction): turns 180° West (-X) and steps to (0, 0)
+        engine.handle_directional_move(p_id, IVec3::NEG_X, PlayerMovementMode::TurnAndMove);
+        assert_eq!(player_body(&engine).anchor, IVec3::new(0, 0, 0));
+        assert_eq!(player_facing(&engine), IVec3::NEG_X);
+    }
+
+    #[test]
+    fn movement_mode_turn_and_move_backstep() {
+        let mut world = World::new();
+        world.spawn(BlockKind::Player, IVec3::ZERO, vec![IVec3::ZERO]);
+        let mut engine = TurnEngine::new(world);
+        let p_id = engine.world.player_id().unwrap();
+
+        // 1. Move East: turns East (+X) and steps to (1, 0)
+        engine.handle_directional_move(p_id, IVec3::X, PlayerMovementMode::TurnAndMoveBackstep);
+        assert_eq!(player_body(&engine).anchor, IVec3::new(1, 0, 0));
+        assert_eq!(player_facing(&engine), IVec3::X);
+
+        // 2. Move West (exact opposite of East!): steps back to (0, 0) WITHOUT changing facing from East!
+        engine.handle_directional_move(p_id, IVec3::NEG_X, PlayerMovementMode::TurnAndMoveBackstep);
+        assert_eq!(player_body(&engine).anchor, IVec3::new(0, 0, 0));
+        assert_eq!(player_facing(&engine), IVec3::X, "Opposite direction must backstep without turning");
+
+        // 3. Move North (orthogonal): turns North (+Y) and steps to (0, 1)
+        engine.handle_directional_move(p_id, IVec3::Y, PlayerMovementMode::TurnAndMoveBackstep);
+        assert_eq!(player_body(&engine).anchor, IVec3::new(0, 1, 0));
+        assert_eq!(player_facing(&engine), IVec3::Y);
+
+        // 4. Move South (exact opposite of North!): steps back to (0, 0) WITHOUT changing facing from North!
+        engine.handle_directional_move(p_id, IVec3::NEG_Y, PlayerMovementMode::TurnAndMoveBackstep);
+        assert_eq!(player_body(&engine).anchor, IVec3::new(0, 0, 0));
+        assert_eq!(player_facing(&engine), IVec3::Y, "Opposite direction must backstep without turning");
     }
 }

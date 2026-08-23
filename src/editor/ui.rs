@@ -30,6 +30,12 @@ pub struct RotateCwButton;
 pub struct RotateCcwButton;
 
 #[derive(Component)]
+pub struct ReflectXButton;
+
+#[derive(Component)]
+pub struct ReflectYButton;
+
+#[derive(Component)]
 pub struct ToggleFixedButton;
 
 #[derive(Component)]
@@ -374,7 +380,56 @@ pub fn setup_editor_ui(mut commands: Commands) {
                                 ))
                                 .with_children(|btn| {
                                     btn.spawn((
-                                        Text::new("CW (Z-90)"),
+                                        Text::new("CW [Key: R]"),
+                                        TextFont::from_font_size(11.0),
+                                        TextColor(TEXT_PRIMARY),
+                                    ));
+                                });
+                            });
+
+                        // Spatial Reflection Controls (48 Oh symmetry group)
+                        inspector
+                            .spawn(Node {
+                                width: Val::Percent(100.0),
+                                column_gap: Val::Px(6.0),
+                                ..default()
+                            })
+                            .with_children(|row| {
+                                row.spawn((
+                                    ReflectXButton,
+                                    Button,
+                                    Node {
+                                        flex_grow: 1.0,
+                                        padding: UiRect::axes(Val::Px(6.0), Val::Px(6.0)),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
+                                        ..default()
+                                    },
+                                    BackgroundColor(BTN_NORMAL),
+                                ))
+                                .with_children(|btn| {
+                                    btn.spawn((
+                                        Text::new("Flip X [Key: X]"),
+                                        TextFont::from_font_size(11.0),
+                                        TextColor(TEXT_PRIMARY),
+                                    ));
+                                });
+
+                                row.spawn((
+                                    ReflectYButton,
+                                    Button,
+                                    Node {
+                                        flex_grow: 1.0,
+                                        padding: UiRect::axes(Val::Px(6.0), Val::Px(6.0)),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
+                                        ..default()
+                                    },
+                                    BackgroundColor(BTN_NORMAL),
+                                ))
+                                .with_children(|btn| {
+                                    btn.spawn((
+                                        Text::new("Flip Y [Key: Y]"),
                                         TextFont::from_font_size(11.0),
                                         TextColor(TEXT_PRIMARY),
                                     ));
@@ -562,9 +617,10 @@ pub fn update_editor_ui_system(
         if let Some(body_id) = editor.selected_body_id {
             if let Some(body) = game.engine.world.body(body_id) {
                 let fixed_str = if body.is_fixed() { "Stationary (Fixed)" } else { "Moveable" };
+                let sym_str = if body.orientation.is_reflection() { "Reflected (Chiral)" } else { "Proper Rotation" };
                 text.0 = format!(
-                    "Type: {:?}\nPosition: ({}, {}, {})\nStatus: {}\nRotation: 0° / 90°",
-                    body.kind, body.anchor.x, body.anchor.y, body.anchor.z, fixed_str
+                    "Type: {:?}\nPosition: ({}, {}, {})\nStatus: {}\nSymmetry: {} (det={})",
+                    body.kind, body.anchor.x, body.anchor.y, body.anchor.z, fixed_str, sym_str, body.orientation.det()
                 );
             } else {
                 text.0 = "No block selected.\nClick a block in the grid to inspect.".into();

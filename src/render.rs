@@ -41,6 +41,7 @@ pub struct RenderAssets {
     pub cube_mesh: Handle<Mesh>,
     pub player_mesh: Handle<Mesh>,
     pub mirror_mesh: Handle<Mesh>,
+    pub mirror_mesh_chiral: Handle<Mesh>,
     pub pyramid_mesh: Handle<Mesh>,
     pub indicator_mesh: Handle<Mesh>,
     pub laser_core_mesh: Handle<Mesh>,
@@ -84,6 +85,7 @@ pub fn setup_render_assets(
     let cube = meshes.add(Cuboid::new(0.9, 0.9, 0.9));
     let player = meshes.add(create_dodecahedron_mesh());
     let mirror = meshes.add(create_mirror_mesh());
+    let mirror_chiral = meshes.add(create_chiral_mirror_mesh());
     let pyramid = meshes.add(create_pyramid_mesh());
     let indicator = meshes.add(Cuboid::new(0.3, 0.3, 0.15));
 
@@ -99,6 +101,7 @@ pub fn setup_render_assets(
         cube_mesh: cube,
         player_mesh: player,
         mirror_mesh: mirror,
+        mirror_mesh_chiral: mirror_chiral,
         pyramid_mesh: pyramid,
         indicator_mesh: indicator,
         laser_core_mesh,
@@ -130,6 +133,8 @@ pub fn setup_render_assets(
         moveable_pushable_mat: materials.add(StandardMaterial {
             base_color: Color::srgb(1.0, 0.65, 0.12), // Bright golden orange
             perceptual_roughness: 0.3,
+            cull_mode: None,
+            double_sided: true,
             ..default()
         }),
         moveable_mirror_mat: materials.add(StandardMaterial {
@@ -137,12 +142,15 @@ pub fn setup_render_assets(
             metallic: 0.6,
             perceptual_roughness: 0.08,
             emissive: LinearRgba::new(0.14, 0.16, 0.20, 1.0), // Clean silver specular glow
+            cull_mode: None,
             double_sided: true,
             ..default()
         }),
         moveable_laser_mat: materials.add(StandardMaterial {
             base_color: Color::srgb(0.9, 0.15, 0.15), // Bright crimson
             perceptual_roughness: 0.3,
+            cull_mode: None,
+            double_sided: true,
             ..default()
         }),
 
@@ -151,12 +159,16 @@ pub fn setup_render_assets(
             base_color: Color::srgb(0.48, 0.48, 0.52),
             base_color_texture: Some(stone_texture.clone()),
             perceptual_roughness: 0.8,
+            cull_mode: None,
+            double_sided: true,
             ..default()
         }),
         fixed_pushable_mat: materials.add(StandardMaterial {
             base_color: Color::srgb(0.5, 0.46, 0.42),
             base_color_texture: Some(stone_texture.clone()),
             perceptual_roughness: 0.7,
+            cull_mode: None,
+            double_sided: true,
             ..default()
         }),
         fixed_mirror_mat: materials.add(StandardMaterial {
@@ -165,6 +177,7 @@ pub fn setup_render_assets(
             metallic: 0.45,
             perceptual_roughness: 0.15,
             emissive: LinearRgba::new(0.10, 0.12, 0.16, 1.0), // Bright silver radiance
+            cull_mode: None,
             double_sided: true,
             ..default()
         }),
@@ -172,6 +185,8 @@ pub fn setup_render_assets(
             base_color: Color::srgb(0.55, 0.35, 0.35),
             base_color_texture: Some(stone_texture.clone()),
             perceptual_roughness: 0.7,
+            cull_mode: None,
+            double_sided: true,
             ..default()
         }),
 
@@ -548,6 +563,74 @@ fn create_mirror_mesh() -> Mesh {
         .with_inserted_indices(Indices::U32(indices))
 }
 
+/// Right-triangular prism for the chiral / reflected mirror (flipped across local X: x ↦ -x).
+/// All faces are wound Counter-Clockwise (CCW) facing outward with outward-pointing normals.
+fn create_chiral_mirror_mesh() -> Mesh {
+    let s: f32 = 0.45;
+    let n: f32 = std::f32::consts::FRAC_1_SQRT_2;
+
+    #[rustfmt::skip]
+    let positions: Vec<[f32; 3]> = vec![
+        // --- Top cap (+Y in Bevy = +Z in Sim: CCW viewed from +Y) ---
+        [ s,  s, -s],  [-s,  s, -s],  [-s,  s,  s],   // 0 1 2
+
+        // --- Bottom cap (-Y in Bevy = -Z in Sim: CCW viewed from -Y) ---
+        [ s, -s, -s],  [-s, -s,  s],  [-s, -s, -s],   // 3 4 5
+
+        // --- Back wall 1 (-X in Sim = West, -X in Bevy: CCW viewed from -X) ---
+        [-s,  s,  s],  [-s,  s, -s],  [-s, -s, -s],  [-s, -s,  s],  // 6 7 8 9
+
+        // --- Back wall 2 (+Y in Sim = North, -Z in Bevy: CCW viewed from -Z) ---
+        [ s,  s, -s],  [-s,  s, -s],  [-s, -s, -s],  [ s, -s, -s],  // 10 11 12 13
+
+        // --- Hypotenuse (South-East in Sim: [+n, 0, n] in Bevy: CCW viewed from [+n, 0, n]) ---
+        [-s, -s,  s],  [ s, -s, -s],  [ s,  s, -s],  [-s,  s,  s],  // 14 15 16 17
+    ];
+
+    #[rustfmt::skip]
+    let normals: Vec<[f32; 3]> = vec![
+        // Top (+Y)
+        [0., 1., 0.],  [0., 1., 0.],  [0., 1., 0.],
+        // Bottom (-Y)
+        [0.,-1., 0.],  [0.,-1., 0.],  [0.,-1., 0.],
+        // Back wall 1 (-X)
+        [-1., 0., 0.], [-1., 0., 0.], [-1., 0., 0.], [-1., 0., 0.],
+        // Back wall 2 (-Z)
+        [0., 0.,-1.],  [0., 0.,-1.],  [0., 0.,-1.],  [0., 0.,-1.],
+        // Hypotenuse ([+n, 0, n])
+        [n, 0., n],    [n, 0., n],    [n, 0., n],    [n, 0., n],
+    ];
+
+    #[rustfmt::skip]
+    let uvs: Vec<[f32; 2]> = vec![
+        // Top
+        [0.0, 1.0], [1.0, 1.0], [1.0, 0.0],
+        // Bottom
+        [0.0, 1.0], [1.0, 0.0], [1.0, 1.0],
+        // Back wall 1
+        [0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0],
+        // Back wall 2
+        [0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0],
+        // Hypotenuse
+        [1.0, 0.0], [0.0, 0.0], [0.0, 1.0], [1.0, 1.0],
+    ];
+
+    #[rustfmt::skip]
+    let indices: Vec<u32> = vec![
+        0,  1,  2,              // Top cap
+        3,  4,  5,              // Bottom cap
+        6,  7,  8,   6,  8,  9, // Back wall 1
+        10, 11, 12,  10, 12, 13, // Back wall 2
+        14, 15, 16,  14, 16, 17, // Hypotenuse
+    ];
+
+    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+        .with_inserted_indices(Indices::U32(indices))
+}
+
 // ---------------------------------------------------------------------------
 // Coordinate helpers
 // ---------------------------------------------------------------------------
@@ -560,8 +643,19 @@ pub fn sim_to_bevy_f32(pos: Vec3) -> Vec3 {
     Vec3::new(pos.x, pos.z, -pos.y)
 }
 
-fn cube_rot_to_quat(rot: &CubeRot) -> Quat {
-    let m = rot.mat();
+/// Convert a simulation symmetry transformation in Oh (proper rotation or reflection)
+/// to a proper rotation quaternion in Bevy space.
+///
+/// For improper rotations / reflections (det = -1), the reflection across local X
+/// is factored into the chiral mesh definition, and the remaining proper rotation
+/// is converted to a `Quat`.
+pub fn cube_rot_to_quat(rot: &CubeRot) -> Quat {
+    let rot_proper = if rot.is_reflection() {
+        rot.reflect_x()
+    } else {
+        *rot
+    };
+    let m = rot_proper.mat();
     let bevy_mat = Mat3::from_cols_array(&[
         m[0][0] as f32,  m[2][0] as f32, -m[1][0] as f32,
         m[0][2] as f32,  m[2][2] as f32, -m[1][2] as f32,
@@ -580,19 +674,20 @@ pub fn sync_bodies(
     mut commands: Commands,
     game: Res<GameState>,
     assets: Res<RenderAssets>,
-    mut query: Query<(Entity, &SimBodyLink, &mut Transform, &mut MeshMaterial3d<StandardMaterial>)>,
+    mut query: Query<(Entity, &SimBodyLink, &mut Transform, &mut Mesh3d, &mut MeshMaterial3d<StandardMaterial>)>,
 ) {
     let world = &game.engine.world;
     let mut seen = std::collections::HashSet::new();
     let mut to_despawn = Vec::new();
 
-    // Update existing entities (position, rotation, and dynamic goal material).
-    for (entity, link, mut transform, mut mat_handle) in &mut query {
+    // Update existing entities (position, rotation, mesh, and dynamic goal material).
+    for (entity, link, mut transform, mut mesh_handle, mut mat_handle) in &mut query {
         if let Some(body) = world.body(link.0) {
             transform.translation = sim_to_bevy(body.anchor);
             transform.rotation = cube_rot_to_quat(&body.orientation);
+            transform.scale = Vec3::ONE;
 
-            // Update dynamic materials based on win / loss / fixed / moveable state
+            // Update dynamic materials and chiral meshes based on orientation/fixed/moveable state
             let is_moveable = body.is_pushable();
             match body.kind {
                 BlockKind::Goal => {
@@ -620,6 +715,11 @@ pub fn sync_bodies(
                     };
                 }
                 BlockKind::Mirror => {
+                    mesh_handle.0 = if body.orientation.is_reflection() {
+                        assets.mirror_mesh_chiral.clone()
+                    } else {
+                        assets.mirror_mesh.clone()
+                    };
                     mat_handle.0 = if is_moveable {
                         assets.moveable_mirror_mat.clone()
                     } else {
@@ -681,12 +781,17 @@ pub fn sync_bodies(
                 (assets.cube_mesh.clone(), mat)
             }
             BlockKind::Mirror => {
+                let m = if body.orientation.is_reflection() {
+                    assets.mirror_mesh_chiral.clone()
+                } else {
+                    assets.mirror_mesh.clone()
+                };
                 let mat = if is_moveable {
                     assets.moveable_mirror_mat.clone()
                 } else {
                     assets.fixed_mirror_mat.clone()
                 };
-                (assets.mirror_mesh.clone(), mat)
+                (m, mat)
             }
             BlockKind::LaserSource => {
                 let mat = if is_moveable {

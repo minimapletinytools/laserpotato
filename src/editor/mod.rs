@@ -243,9 +243,41 @@ fn editor_grid_interaction_system(
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform), With<camera::MainCamera>>,
     mouse_button: Res<ButtonInput<MouseButton>>,
+    keyboard: Res<ButtonInput<KeyCode>>,
     mut editor: ResMut<EditorState>,
     mut game: ResMut<GameState>,
 ) {
+    // Keyboard shortcuts for selected block in editor
+    if let Some(id) = editor.selected_body_id {
+        if keyboard.just_pressed(KeyCode::KeyR) {
+            if let Some(b) = game.engine.world.body_mut(id) {
+                b.orientation = b.orientation.rotate_z_cw();
+                game.engine.world.sync_grid();
+                editor.cached_solution = None;
+                editor.toast("Rotated block CW (Key: R).");
+            }
+        } else if keyboard.just_pressed(KeyCode::KeyX) {
+            if let Some(b) = game.engine.world.body_mut(id) {
+                b.orientation = b.orientation.reflect_x();
+                game.engine.world.sync_grid();
+                editor.cached_solution = None;
+                editor.toast("Flipped block across X axis (Key: X).");
+            }
+        } else if keyboard.just_pressed(KeyCode::KeyY) {
+            if let Some(b) = game.engine.world.body_mut(id) {
+                b.orientation = b.orientation.reflect_y();
+                game.engine.world.sync_grid();
+                editor.cached_solution = None;
+                editor.toast("Flipped block across Y axis (Key: Y).");
+            }
+        } else if keyboard.just_pressed(KeyCode::Delete) || keyboard.just_pressed(KeyCode::Backspace) {
+            game.engine.world.despawn(id);
+            editor.selected_body_id = None;
+            editor.cached_solution = None;
+            editor.toast("Deleted selected block (Key: Del).");
+        }
+    }
+
     let Ok(window) = windows.single() else { return };
     let Some(cursor_pos) = window.cursor_position() else {
         editor.hovered_cell = None;
@@ -347,6 +379,8 @@ fn editor_button_clicks_system(
             Option<&ui::ActionButton>,
             Option<&ui::RotateCwButton>,
             Option<&ui::RotateCcwButton>,
+            Option<&ui::ReflectXButton>,
+            Option<&ui::ReflectYButton>,
             Option<&ui::ToggleFixedButton>,
             Option<&ui::DeleteBlockButton>,
         ),
@@ -357,7 +391,7 @@ fn editor_button_clicks_system(
     mut next_mode: ResMut<NextState<AppMode>>,
     mut playback: ResMut<crate::PlaybackState>,
 ) {
-    for (interaction, palette_btn, prop_btn, action_btn, rot_cw, rot_ccw, toggle_fixed, del_btn) in
+    for (interaction, palette_btn, prop_btn, action_btn, rot_cw, rot_ccw, ref_x, ref_y, toggle_fixed, del_btn) in
         &mut interaction_query
     {
         if *interaction != Interaction::Pressed {
@@ -524,7 +558,30 @@ fn editor_button_clicks_system(
             }
         }
 
-        // 5. Inspector toggle fixed property
+        // 5. Inspector reflection buttons (Flip X, Flip Y)
+        if ref_x.is_some() {
+            if let Some(id) = editor.selected_body_id {
+                if let Some(body) = game.engine.world.body_mut(id) {
+                    body.orientation = body.orientation.reflect_x();
+                    game.engine.world.sync_grid();
+                    editor.cached_solution = None;
+                    editor.toast("Reflected block across X axis (Flip X).");
+                }
+            }
+        }
+
+        if ref_y.is_some() {
+            if let Some(id) = editor.selected_body_id {
+                if let Some(body) = game.engine.world.body_mut(id) {
+                    body.orientation = body.orientation.reflect_y();
+                    game.engine.world.sync_grid();
+                    editor.cached_solution = None;
+                    editor.toast("Reflected block across Y axis (Flip Y).");
+                }
+            }
+        }
+
+        // 6. Inspector toggle fixed property
         if toggle_fixed.is_some() {
             if let Some(id) = editor.selected_body_id {
                 if let Some(body) = game.engine.world.body_mut(id) {

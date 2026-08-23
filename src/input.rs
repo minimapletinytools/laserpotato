@@ -23,22 +23,20 @@ pub fn keyboard_input_system(
 ) {
     let mut action = None;
 
-    // Forward / backward
+    // Directional movement: ↑ / W (North), ↓ / S (South), ← / A (West), → / D (East)
     if keys.just_pressed(KeyCode::ArrowUp) || keys.just_pressed(KeyCode::KeyW) {
-        action = Some(PlayerAction::Forward);
+        action = Some(PlayerAction::MoveNorth);
     } else if keys.just_pressed(KeyCode::ArrowDown) || keys.just_pressed(KeyCode::KeyS) {
-        action = Some(PlayerAction::Backward);
+        action = Some(PlayerAction::MoveSouth);
+    } else if keys.just_pressed(KeyCode::ArrowLeft) || keys.just_pressed(KeyCode::KeyA) {
+        action = Some(PlayerAction::MoveWest);
+    } else if keys.just_pressed(KeyCode::ArrowRight) || keys.just_pressed(KeyCode::KeyD) {
+        action = Some(PlayerAction::MoveEast);
     }
-    // Turn in place
-    else if keys.just_pressed(KeyCode::ArrowLeft)
-        || keys.just_pressed(KeyCode::KeyA)
-        || keys.just_pressed(KeyCode::KeyQ)
-    {
+    // Dedicated turn-in-place keys: Q (turn left) and E (turn right)
+    else if keys.just_pressed(KeyCode::KeyQ) {
         action = Some(PlayerAction::TurnLeft);
-    } else if keys.just_pressed(KeyCode::ArrowRight)
-        || keys.just_pressed(KeyCode::KeyD)
-        || keys.just_pressed(KeyCode::KeyE)
-    {
+    } else if keys.just_pressed(KeyCode::KeyE) {
         action = Some(PlayerAction::TurnRight);
     }
     // Actions

@@ -63,7 +63,32 @@ impl CubeRot {
         mat: [[0, 1, 0], [-1, 0, 0], [0, 0, 1]],
     };
 
-    /// Apply this rotation to a local-space offset, producing a world-space offset.
+    /// Reflection across the YZ plane: x ↦ -x.
+    pub const REFLECT_X: CubeRot = CubeRot {
+        mat: [[-1, 0, 0], [0, 1, 0], [0, 0, 1]],
+    };
+
+    /// Reflection across the XZ plane: y ↦ -y.
+    pub const REFLECT_Y: CubeRot = CubeRot {
+        mat: [[1, 0, 0], [0, -1, 0], [0, 0, 1]],
+    };
+
+    /// Reflection across the XY plane: z ↦ -z.
+    pub const REFLECT_Z: CubeRot = CubeRot {
+        mat: [[1, 0, 0], [0, 1, 0], [0, 0, -1]],
+    };
+
+    /// Reflection across the diagonal x=y plane: (x, y, z) ↦ (y, x, z).
+    pub const REFLECT_XY: CubeRot = CubeRot {
+        mat: [[0, 1, 0], [1, 0, 0], [0, 0, 1]],
+    };
+
+    /// Full point inversion: x ↦ -x, y ↦ -y, z ↦ -z.
+    pub const INVERSION: CubeRot = CubeRot {
+        mat: [[-1, 0, 0], [0, -1, 0], [0, 0, -1]],
+    };
+
+    /// Apply this rotation/reflection to a local-space offset, producing a world-space offset.
     pub fn apply(self, v: IVec3) -> IVec3 {
         let m = self.mat;
         IVec3::new(
@@ -73,7 +98,7 @@ impl CubeRot {
         )
     }
 
-    /// Compose rotations: applying `self.then(other)` is the same as applying
+    /// Compose transformations: applying `self.then(other)` is the same as applying
     /// `self` first, then `other`.
     pub fn then(self, other: CubeRot) -> CubeRot {
         let a = other.mat;
@@ -87,8 +112,8 @@ impl CubeRot {
         CubeRot { mat }
     }
 
-    /// Inverse rotation. Cheap because rotation matrices are orthogonal, so
-    /// the inverse is just the transpose.
+    /// Inverse transformation. Cheap because all signed permutation matrices in Oh
+    /// are orthogonal, so the inverse is just the matrix transpose.
     pub fn inverse(self) -> CubeRot {
         let m = self.mat;
         CubeRot {
@@ -98,6 +123,103 @@ impl CubeRot {
                 [m[0][2], m[1][2], m[2][2]],
             ],
         }
+    }
+
+    /// Determinant of the transformation matrix (+1 for proper rotations, -1 for reflections).
+    pub fn det(&self) -> i32 {
+        let m = self.mat;
+        m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
+            - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+            + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
+    }
+
+    /// Returns true if this transformation includes a spatial reflection / improper rotation (det == -1).
+    pub fn is_reflection(&self) -> bool {
+        self.det() < 0
+    }
+
+    /// Returns true if this transformation is a pure proper rotation (det == +1).
+    pub fn is_proper_rotation(&self) -> bool {
+        self.det() > 0
+    }
+
+    /// Flip / reflect across the local X axis (x ↦ -x).
+    pub fn reflect_x(self) -> Self {
+        self.then(Self::REFLECT_X)
+    }
+
+    /// Flip / reflect across the local Y axis (y ↦ -y).
+    pub fn reflect_y(self) -> Self {
+        self.then(Self::REFLECT_Y)
+    }
+
+    /// Flip / reflect across the local Z axis (z ↦ -z).
+    pub fn reflect_z(self) -> Self {
+        self.then(Self::REFLECT_Z)
+    }
+
+    /// Return the 2D rotation around the Z axis that maps local +Y (forward) to the given 2D direction.
+    pub fn from_facing_2d(dir: IVec3) -> Self {
+        match (dir.x, dir.y) {
+            (0, 1) => Self::IDENTITY,     // North (+Y)
+            (1, 0) => Self::ROT_Z_270,    // East (+X)
+            (0, -1) => Self::ROT_Z_180,   // South (-Y)
+            (-1, 0) => Self::ROT_Z_90,    // West (-X)
+            _ => Self::IDENTITY,
+        }
+    }
+
+    /// Rotate 90° clockwise around the local Z axis.
+    pub fn rotate_z_cw(self) -> Self {
+        self.then(Self::ROT_Z_270)
+    }
+
+    /// Rotate 90° counter-clockwise around the local Z axis.
+    pub fn rotate_z_ccw(self) -> Self {
+        self.then(Self::ROT_Z_90)
+    }
+
+    /// Enumerate all 48 distinct symmetry operations of the full octahedral group Oh.
+    /// Consists of 24 proper rotations (det = +1) and 24 reflections/improper rotations (det = -1).
+    pub fn all_48() -> Vec<CubeRot> {
+        let mut group = std::collections::HashSet::new();
+        // Base generators for Oh: 90° rotations along X and Y, plus reflection across X.
+        let generators = [
+            Self::ROT_X_90,
+            Self::ROT_Y_90,
+            Self::REFLECT_X,
+        ];
+
+        let mut queue = vec![Self::IDENTITY];
+        group.insert(Self::IDENTITY);
+
+        while let Some(current) = queue.pop() {
+            for &g in &generators {
+                let next = current.then(g);
+                if group.insert(next) {
+                    queue.push(next);
+                }
+            }
+        }
+
+        group.into_iter().collect()
+    }
+
+    /// Return all 48 unique symmetry operations of Oh, deterministically sorted with
+    /// `CubeRot::IDENTITY` at index 0, followed by proper rotations (det = +1), followed by
+    /// reflections/improper rotations (det = -1).
+    pub fn all_48_sorted() -> Vec<Self> {
+        let mut list = Self::all_48();
+        list.sort_by_key(|r| {
+            (
+                if *r == Self::IDENTITY { 0 } else { 1 },
+                -r.det(), // det = +1 before det = -1
+                r.mat[0],
+                r.mat[1],
+                r.mat[2],
+            )
+        });
+        list
     }
 
     /// Access the raw 3×3 rotation matrix (rows of column components).
@@ -251,6 +373,65 @@ impl Body {
     /// Whether this specific body is fixed/stationary.
     pub fn is_fixed(&self) -> bool {
         self.tags.has(TagKind::Fixed) || matches!(self.kind, BlockKind::Wall | BlockKind::Goal)
+    }
+
+    /// Computes the canonical orientation representing the equivalence class of this body's
+    /// physical properties under the 48 symmetry operations of Oh.
+    ///
+    /// Two orientations M1, M2 that produce identical laser reflections on all 6 faces,
+    /// identical laser emission direction, and identical occupied voxel cells will map to the
+    /// exact same canonical `CubeRot`.
+    pub fn canonical_orientation(&self) -> CubeRot {
+        let props = self.properties();
+        let all_symmetries = CubeRot::all_48_sorted();
+        for candidate in all_symmetries {
+            if self.is_physically_equivalent_to(&candidate, &props) {
+                return candidate;
+            }
+        }
+        self.orientation
+    }
+
+    fn is_physically_equivalent_to(
+        &self,
+        candidate: &CubeRot,
+        props: &crate::block_types::BlockProperties,
+    ) -> bool {
+        // 1. World-space occupied cells must match:
+        for &offset in &self.shape {
+            if self.orientation.apply(offset) != candidate.apply(offset) {
+                return false;
+            }
+        }
+
+        // 2. If player-controlled, movement facing direction (+Y) must match:
+        if props.is_player_controlled && self.orientation.apply(IVec3::Y) != candidate.apply(IVec3::Y) {
+            return false;
+        }
+
+        // 3. If laser emitter, emitted laser direction must match in world space:
+        if let Some(emit_local) = props.emits_laser_towards {
+            if self.orientation.apply(emit_local) != candidate.apply(emit_local) {
+                return false;
+            }
+        }
+
+        // 4. Laser reflection response on all 6 cardinal incoming directions must match:
+        let directions = [
+            IVec3::X,
+            IVec3::NEG_X,
+            IVec3::Y,
+            IVec3::NEG_Y,
+            IVec3::Z,
+            IVec3::NEG_Z,
+        ];
+        for &d in &directions {
+            if props.reflect_laser(d, &self.orientation) != props.reflect_laser(d, candidate) {
+                return false;
+            }
+        }
+
+        true
     }
 }
 
@@ -464,5 +645,81 @@ mod tests {
         world.spawn(BlockKind::Wall, IVec3::new(3, 0, 0), vec![IVec3::ZERO]);
         assert!(world.body_at(IVec3::new(3, 0, 0)).is_some());
         assert!(world.body_at(IVec3::new(4, 0, 0)).is_none());
+    }
+
+    #[test]
+    fn full_octahedral_group_has_48_unique_symmetries() {
+        let symmetries = CubeRot::all_48();
+        assert_eq!(symmetries.len(), 48);
+
+        let mut proper_count = 0;
+        let mut reflection_count = 0;
+
+        for sym in &symmetries {
+            let det = sym.det();
+            assert!(det == 1 || det == -1, "Determinant must be ±1, got {}", det);
+            if det == 1 {
+                proper_count += 1;
+                assert!(sym.is_proper_rotation());
+                assert!(!sym.is_reflection());
+            } else {
+                reflection_count += 1;
+                assert!(sym.is_reflection());
+                assert!(!sym.is_proper_rotation());
+            }
+
+            // Verify orthogonality: M * M^T = I
+            let inv = sym.inverse();
+            let identity_check = sym.then(inv);
+            assert_eq!(identity_check, CubeRot::IDENTITY);
+        }
+
+        assert_eq!(proper_count, 24, "Expected exactly 24 proper rotations");
+        assert_eq!(reflection_count, 24, "Expected exactly 24 reflections/improper rotations");
+    }
+
+    #[test]
+    fn reflection_reverses_coordinates_along_axis() {
+        let v = IVec3::new(2, 3, 4);
+        assert_eq!(CubeRot::REFLECT_X.apply(v), IVec3::new(-2, 3, 4));
+        assert_eq!(CubeRot::REFLECT_Y.apply(v), IVec3::new(2, -3, 4));
+        assert_eq!(CubeRot::REFLECT_Z.apply(v), IVec3::new(2, 3, -4));
+        assert_eq!(CubeRot::INVERSION.apply(v), IVec3::new(-2, -3, -4));
+    }
+
+    #[test]
+    fn canonical_orientation_equivalence_reduction() {
+        let all_48 = CubeRot::all_48();
+
+        // 1. For isotropic 1x1x1 Wall: all 48 orientations reduce to IDENTITY (1 class).
+        let mut wall = Body::new(BodyId(1), BlockKind::Wall, IVec3::ZERO, vec![IVec3::ZERO]);
+        let mut wall_canonical_set = std::collections::HashSet::new();
+        for &rot in &all_48 {
+            wall.orientation = rot;
+            let canonical = wall.canonical_orientation();
+            assert_eq!(canonical, CubeRot::IDENTITY, "Wall orientation should reduce to IDENTITY");
+            wall_canonical_set.insert(canonical);
+        }
+        assert_eq!(wall_canonical_set.len(), 1);
+
+        // 2. For isotropic Pushable Crate: all 48 orientations reduce to IDENTITY (1 class).
+        let mut crate_body = Body::new(BodyId(2), BlockKind::Pushable, IVec3::ZERO, vec![IVec3::ZERO]);
+        let mut crate_canonical_set = std::collections::HashSet::new();
+        for &rot in &all_48 {
+            crate_body.orientation = rot;
+            let canonical = crate_body.canonical_orientation();
+            assert_eq!(canonical, CubeRot::IDENTITY, "Pushable crate orientation should reduce to IDENTITY");
+            crate_canonical_set.insert(canonical);
+        }
+        assert_eq!(crate_canonical_set.len(), 1);
+
+        // 3. For LaserSource: 48 orientations reduce to exactly 6 canonical emission directions.
+        let mut laser = Body::new(BodyId(3), BlockKind::LaserSource, IVec3::ZERO, vec![IVec3::ZERO]);
+        let mut laser_canonical_set = std::collections::HashSet::new();
+        for &rot in &all_48 {
+            laser.orientation = rot;
+            laser_canonical_set.insert(laser.canonical_orientation());
+        }
+        assert_eq!(laser_canonical_set.len(), 6, "Laser source should have exactly 6 canonical direction classes");
     }
 }

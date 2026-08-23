@@ -161,7 +161,7 @@ pub fn compute_level_hash(world: &World) -> u64 {
             (
                 b.kind,
                 [b.anchor.x, b.anchor.y, b.anchor.z],
-                b.orientation.mat,
+                b.canonical_orientation().mat,
                 b.is_fixed(),
             )
         })
@@ -184,19 +184,16 @@ pub fn save_level_to_file(path: impl AsRef<Path>, level: &LevelData) -> std::io:
 
 /// Load level data from a JSON file.
 pub fn load_level_from_file(path: impl AsRef<Path>) -> std::io::Result<LevelData> {
+    let path = path.as_ref();
     let content = std::fs::read_to_string(path)?;
     serde_json::from_str(&content)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
-/// List all `.json` level files located in `levels/` directory.
+/// Enumerate all `.json` level files in `levels/` directory.
 pub fn list_level_files() -> Vec<String> {
-    let dir = Path::new("levels");
-    if !dir.exists() {
-        let _ = std::fs::create_dir_all(dir);
-    }
     let mut files = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(dir) {
+    if let Ok(entries) = std::fs::read_dir("levels") {
         for entry in entries.flatten() {
             let p = entry.path();
             if p.is_file() && p.extension().and_then(|ext| ext.to_str()) == Some("json") {
@@ -213,6 +210,7 @@ pub fn list_level_files() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sim::CubeRot;
 
     #[test]
     fn level_serialization_round_trip() {
@@ -240,5 +238,33 @@ mod tests {
 
         let hash3 = compute_level_hash(&world2);
         assert_ne!(hash1, hash3);
+    }
+
+    #[test]
+    fn rotating_isotropic_block_preserves_level_hash() {
+        let world1 = test_level();
+        let mut world2 = test_level();
+
+        // Rotate a wall in world2
+        let wall_id = world2.body_at(IVec3::new(0, 5, 0)).unwrap().id;
+        world2.body_mut(wall_id).unwrap().orientation = CubeRot::ROT_Z_90;
+        world2.sync_grid();
+
+        assert_eq!(
+            compute_level_hash(&world1),
+            compute_level_hash(&world2),
+            "Rotating an isotropic wall should preserve the canonical level hash"
+        );
+
+        // Rotating a directional mirror in world2 MUST change the level hash
+        let mirror_id = world2.body_at(IVec3::new(2, 5, 0)).unwrap().id;
+        world2.body_mut(mirror_id).unwrap().orientation = CubeRot::ROT_Z_90;
+        world2.sync_grid();
+
+        assert_ne!(
+            compute_level_hash(&world1),
+            compute_level_hash(&world2),
+            "Rotating a mirror changes puzzle behavior and must produce a different level hash"
+        );
     }
 }

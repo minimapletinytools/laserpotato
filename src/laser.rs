@@ -9,7 +9,6 @@ use std::collections::HashSet;
 
 use glam::IVec3;
 
-use crate::block_types::BlockKind;
 use crate::sim::{BodyId, World};
 
 /// Maximum number of cells a single ray will traverse before giving up.
@@ -55,15 +54,14 @@ pub fn cast_all_lasers(world: &World) -> Vec<LaserSegment> {
     // Track (origin, direction) pairs to detect mirror loops.
     let mut visited: HashSet<(IVec3, IVec3)> = HashSet::new();
 
-    // Seed the work queue with every LaserSource.
+    // Seed the work queue with every laser emitter body.
     let mut queue: Vec<(BodyId, IVec3, IVec3)> = world
         .bodies()
         .iter()
-        .filter(|b| b.kind == BlockKind::LaserSource)
-        .map(|b| {
-            // "Forward" in local space is +Y; transform to world space.
-            let forward = b.orientation.apply(IVec3::new(0, 1, 0));
-            (b.id, b.anchor, forward)
+        .filter_map(|b| {
+            let emit_local = b.properties().emits_laser_towards?;
+            let world_dir = b.orientation.apply(emit_local);
+            Some((b.id, b.anchor, world_dir))
         })
         .collect();
 
@@ -225,5 +223,27 @@ mod tests {
         let segments = cast_all_lasers(&world);
         assert!(segments.len() >= 3);
         assert!(segments.len() <= 5); // bounded
+    }
+
+    #[test]
+    fn reflected_mirror_transforms_reflection_angles() {
+        let mut world = World::new();
+        // Laser pointing +Y from (0, 0).
+        world.spawn(BlockKind::LaserSource, IVec3::new(0, 0, 0), vec![IVec3::ZERO]);
+
+        // Mirror at (0, 3) reflected across X axis (x ↦ -x).
+        // Default "/" mirror becomes "\" mirror facing South-East.
+        let mid = world.spawn(BlockKind::Mirror, IVec3::new(0, 3, 0), vec![IVec3::ZERO]);
+        world.body_mut(mid).unwrap().orientation = CubeRot::REFLECT_X;
+        world.spawn(BlockKind::Wall, IVec3::new(-5, 3, 0), vec![IVec3::ZERO]);
+        world.sync_grid();
+
+        let segments = cast_all_lasers(&world);
+        assert_eq!(segments.len(), 2);
+
+        // Reflected segment must travel along -X (West towards wall at -5, 3, 0).
+        let reflected = segments.iter().find(|s| s.direction == IVec3::new(-1, 0, 0));
+        assert!(reflected.is_some(), "expected beam reflected to -X for REFLECT_X mirror");
+        assert_eq!(reflected.unwrap().hit.as_ref().unwrap().cell, IVec3::new(-5, 3, 0));
     }
 }

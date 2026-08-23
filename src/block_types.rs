@@ -149,6 +149,34 @@ impl FaceProperties {
     }
 }
 
+/// Movement control modes available for player-controlled bodies.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, Default)]
+pub enum PlayerMovementMode {
+    /// Mode 1: Tank Controls (Turn + Step Forward/Back).
+    /// - Left / Right: Turn 90° in place.
+    /// - Up: Step forward in facing direction.
+    /// - Down: Step backward opposite to facing direction.
+    #[default]
+    Tank,
+
+    /// Mode 2: Strafing (Direct Directional Move, No Turning).
+    /// - Up / Down / Left / Right: Step directly North (+Y), South (-Y), West (-X), East (+X) without altering facing orientation.
+    Strafe,
+
+    /// Mode 3: Turn & Move (Always Face Move Direction).
+    /// - Pressing a directional key turns the player to face that direction AND steps 1 cell in that direction.
+    /// - Moving in the opposite direction turns 180° and steps.
+    TurnAndMove,
+
+    /// Mode 4: Turn & Move (Backstep Without Turning on Opposite Direction).
+    /// - Pressing forward or orthogonal directions turns to face that direction and steps.
+    /// - Pressing the exact opposite direction (180°) steps backward without changing facing orientation.
+    TurnAndMoveBackstep,
+}
+
+/// Default movement mode constant for player bodies.
+pub const DEFAULT_PLAYER_MOVEMENT_MODE: PlayerMovementMode = PlayerMovementMode::Tank;
+
 // ---------------------------------------------------------------------------
 // Per-Block Properties
 // ---------------------------------------------------------------------------
@@ -160,6 +188,12 @@ pub struct BlockProperties {
     pub is_pushable: bool,
     /// Whether this block prevents other blocks from occupying its cells.
     pub is_solid: bool,
+    /// Whether this block is directly controlled by player movement commands.
+    pub is_player_controlled: bool,
+    /// Movement control mode when controlled by player commands.
+    pub player_movement_mode: PlayerMovementMode,
+    /// If `Some(local_dir)`, this block continuously emits a laser beam in `local_dir`.
+    pub emits_laser_towards: Option<IVec3>,
     /// Movement priority — lower values are processed first in turn resolution.
     pub movement_priority: u32,
     /// Properties for each of the 6 faces indexed by [`BlockFace`].
@@ -171,6 +205,9 @@ impl Default for BlockProperties {
         Self {
             is_pushable: false,
             is_solid: true,
+            is_player_controlled: false,
+            player_movement_mode: DEFAULT_PLAYER_MOVEMENT_MODE,
+            emits_laser_towards: None,
             movement_priority: 100,
             faces: [FaceProperties::none(); 6],
         }
@@ -222,6 +259,9 @@ impl BlockProperties {
         Self {
             is_pushable: self.is_pushable,
             is_solid: self.is_solid,
+            is_player_controlled: self.is_player_controlled,
+            player_movement_mode: self.player_movement_mode,
+            emits_laser_towards: self.emits_laser_towards.map(|d| rot.apply(d)),
             movement_priority: self.movement_priority,
             faces: new_faces,
         }
@@ -238,6 +278,12 @@ impl BlockProperties {
         Self {
             is_pushable: self.is_pushable,
             is_solid: self.is_solid,
+            is_player_controlled: self.is_player_controlled,
+            player_movement_mode: self.player_movement_mode,
+            emits_laser_towards: self.emits_laser_towards.map(|d| {
+                let dot = d.dot(plane_normal);
+                d - 2 * dot * plane_normal
+            }),
             movement_priority: self.movement_priority,
             faces: new_faces,
         }
@@ -277,6 +323,7 @@ impl BlockKind {
         match self {
             Self::Player => {
                 props.is_pushable = true;
+                props.is_player_controlled = true;
                 props.movement_priority = 0;
             }
             Self::Wall => {
@@ -293,6 +340,7 @@ impl BlockKind {
             }
             Self::LaserSource => {
                 props.is_pushable = true;
+                props.emits_laser_towards = Some(IVec3::Y);
                 props.movement_priority = 100;
             }
             Self::Mirror => {

@@ -193,14 +193,22 @@ fn screenshot_system(
     config.frame_counter += 1;
 
     if config.frame_counter == config.target_frame {
+        let p = path.clone();
         commands
             .spawn(bevy::render::view::screenshot::Screenshot::primary_window())
-            .observe(bevy::render::view::screenshot::save_to_disk(path.clone()));
-    }
+            .observe(move |event: bevy::ecs::observer::On<bevy::render::view::screenshot::ScreenshotCaptured>| {
+                let img = event.image.clone();
+                let dyn_res = img
+                    .convert(bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb)
+                    .and_then(|converted| converted.try_into_dynamic().ok())
+                    .or_else(|| img.try_into_dynamic().ok());
 
-    if config.frame_counter >= config.target_frame + 6 {
-        println!("[✓] Automated screenshot captured to '{}'.", path);
-        std::process::exit(0);
+                if let Some(dyn_img) = dyn_res {
+                    let _ = dyn_img.save(&p);
+                    println!("[✓] Automated screenshot captured to '{}'.", p);
+                    std::process::exit(0);
+                }
+            });
     }
 }
 
