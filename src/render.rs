@@ -133,9 +133,10 @@ pub fn setup_render_assets(
             ..default()
         }),
         moveable_mirror_mat: materials.add(StandardMaterial {
-            base_color: Color::srgb(0.92, 0.96, 1.0), // Polished bright chrome
-            metallic: 0.95,
-            perceptual_roughness: 0.05,
+            base_color: Color::srgb(0.96, 0.98, 1.0), // Gleaming bright polished silver
+            metallic: 0.6,
+            perceptual_roughness: 0.08,
+            emissive: LinearRgba::new(0.14, 0.16, 0.20, 1.0), // Clean silver specular glow
             double_sided: true,
             ..default()
         }),
@@ -145,28 +146,30 @@ pub fn setup_render_assets(
             ..default()
         }),
 
-        // Stationary / Fixed Blocks (Desaturated, darker, stone texture)
+        // Stationary / Fixed Blocks (Desaturated, darker, with 12-dot polka dot texture)
         fixed_wall_mat: materials.add(StandardMaterial {
-            base_color: Color::srgb(0.45, 0.45, 0.48),
+            base_color: Color::srgb(0.48, 0.48, 0.52),
             base_color_texture: Some(stone_texture.clone()),
             perceptual_roughness: 0.8,
             ..default()
         }),
         fixed_pushable_mat: materials.add(StandardMaterial {
-            base_color: Color::srgb(0.48, 0.44, 0.4),
+            base_color: Color::srgb(0.5, 0.46, 0.42),
             base_color_texture: Some(stone_texture.clone()),
             perceptual_roughness: 0.7,
             ..default()
         }),
         fixed_mirror_mat: materials.add(StandardMaterial {
-            base_color: Color::srgb(0.7, 0.72, 0.78), // Desaturated gunmetal mirror
-            metallic: 0.85,
+            base_color: Color::srgb(0.88, 0.91, 0.96), // Bright silver with polka dot pattern
+            base_color_texture: Some(stone_texture.clone()),
+            metallic: 0.45,
             perceptual_roughness: 0.15,
+            emissive: LinearRgba::new(0.10, 0.12, 0.16, 1.0), // Bright silver radiance
             double_sided: true,
             ..default()
         }),
         fixed_laser_mat: materials.add(StandardMaterial {
-            base_color: Color::srgb(0.5, 0.3, 0.3),
+            base_color: Color::srgb(0.55, 0.35, 0.35),
             base_color_texture: Some(stone_texture.clone()),
             perceptual_roughness: 0.7,
             ..default()
@@ -207,6 +210,7 @@ pub fn setup_render_assets(
             metallic: 0.7,
             perceptual_roughness: 0.2,
             emissive: LinearRgba::new(0.4, 0.3, 0.05, 1.0),
+            double_sided: true,
             ..default()
         }),
 
@@ -216,6 +220,7 @@ pub fn setup_render_assets(
             metallic: 0.8,
             perceptual_roughness: 0.1,
             emissive: LinearRgba::new(20.0, 15.0, 3.0, 1.0),
+            double_sided: true,
             ..default()
         }),
     });
@@ -225,25 +230,81 @@ pub fn setup_render_assets(
 // Procedural Textures & Custom Meshes
 // ---------------------------------------------------------------------------
 
-/// Create a procedural stone grid / masonry texture for stationary blocks.
+/// Create a procedural polka dot texture for stationary/immovable blocks.
+/// Features bold polka dots tilted at a 25° angle with skewed rows and soft contrast (12 dots per face).
 fn create_fixed_block_texture() -> Image {
-    let width = 64;
-    let height = 64;
+    let width = 128;
+    let height = 128;
     let mut data = Vec::with_capacity((width * height * 4) as usize);
 
+    // 25-degree tilt angle
+    let angle_rad = 25.0_f32.to_radians();
+    let cos_a = angle_rad.cos();
+    let sin_a = angle_rad.sin();
+
+    // 3 rows along Y
+    let y_rows = [21.33_f32, 64.0, 106.67];
+    let row_skews = [0.0_f32, 12.0, 24.0];
+    let base_x = [16.0_f32, 48.0, 80.0, 112.0];
+    let radius = 11.5_f32;
+
     for y in 0..height {
+        let py = y as f32 + 0.5;
         for x in 0..width {
+            let px = x as f32 + 0.5;
+
+            // Rotate coordinates by 25° about center (64, 64)
+            let cx_offset = px - 64.0;
+            let cy_offset = py - 64.0;
+            let rx = (cx_offset * cos_a - cy_offset * sin_a + 64.0).rem_euclid(128.0);
+            let ry = (cx_offset * sin_a + cy_offset * cos_a + 64.0).rem_euclid(128.0);
+
+            // Find distance to closest dot center in the tilted frame
+            let mut min_dist_sq = f32::MAX;
+            for (row_idx, &cy) in y_rows.iter().enumerate() {
+                let skew = row_skews[row_idx];
+                for &bx in &base_x {
+                    let cx = (bx + skew) % 128.0;
+
+                    let mut dx = (rx - cx).abs();
+                    if dx > 64.0 {
+                        dx = 128.0 - dx;
+                    }
+                    let mut dy = (ry - cy).abs();
+                    if dy > 64.0 {
+                        dy = 128.0 - dy;
+                    }
+
+                    let dist_sq = dx * dx + dy * dy;
+                    if dist_sq < min_dist_sq {
+                        min_dist_sq = dist_sq;
+                    }
+                }
+            }
+
+            let dist = min_dist_sq.sqrt();
+            let dot_factor = (1.0 - (dist - (radius - 1.2)).clamp(0.0, 1.5) / 1.5).clamp(0.0, 1.0);
+
+            // Subtle border frame around the block face
             let is_border = x <= 2 || x >= width - 3 || y <= 2 || y >= height - 3;
-            let is_groove = (x >= 30 && x <= 33) || (y >= 30 && y <= 33);
-            let noise = ((x * 13 + y * 37) % 23) as u8;
 
             let (r, g, b) = if is_border {
-                (45, 45, 50)
-            } else if is_groove {
-                (65, 65, 72)
+                (42, 45, 52) // Dark border rim
             } else {
-                let base = 145 + noise;
-                (base, base, base + 4)
+                // Background dark slate base: (72, 75, 82)
+                // Soft muted polka dot color (less bright): (132, 138, 148)
+                let base_r = 72.0_f32;
+                let base_g = 75.0_f32;
+                let base_b = 82.0_f32;
+
+                let dot_r = 132.0_f32;
+                let dot_g = 138.0_f32;
+                let dot_b = 148.0_f32;
+
+                let r = (base_r * (1.0 - dot_factor) + dot_r * dot_factor) as u8;
+                let g = (base_g * (1.0 - dot_factor) + dot_g * dot_factor) as u8;
+                let b = (base_b * (1.0 - dot_factor) + dot_b * dot_factor) as u8;
+                (r, g, b)
             };
 
             data.push(r);
@@ -766,7 +827,7 @@ pub fn animate_laser_pfx(
 }
 
 // ---------------------------------------------------------------------------
-// Coordinate Gizmo & Debug Displays
+// Coordinate Gizmo, Grid & Debug Displays
 // ---------------------------------------------------------------------------
 
 /// Toggle for the 3D coordinate frame gizmo in the bottom-left.
@@ -774,6 +835,12 @@ pub const SHOW_COORDINATE_GIZMO: bool = true;
 
 /// Toggle for the 2D coordinate axes legend HUD overlay in the bottom-left.
 pub const SHOW_COORDINATE_LEGEND: bool = true;
+
+/// Toggle for the ground grid lines overlay.
+pub const SHOW_GRID: bool = true;
+
+/// Toggle for the ground grid coordinate number labels along X and Y axes.
+pub const SHOW_GRID_LABELS: bool = true;
 
 /// Draw 3D coordinate arrows in the bottom-left corner showing the game's Sim coordinate axes:
 /// - Red arrow: +X (Right)
@@ -785,7 +852,7 @@ pub fn draw_coordinate_gizmo(mut gizmos: Gizmos) {
     }
 
     // Bottom-left origin in Bevy coordinates (-X, +Z)
-    let origin = Vec3::new(-2.2, 0.2, 2.2);
+    let origin = Vec3::new(-2.6, 0.2, 2.6);
     let len = 1.0;
 
     // +X (Right in Sim = +X in Bevy) - Red
@@ -794,4 +861,95 @@ pub fn draw_coordinate_gizmo(mut gizmos: Gizmos) {
     gizmos.arrow(origin, origin + Vec3::new(0.0, 0.0, -len), Color::srgb(0.25, 1.0, 0.25));
     // +Z (Up in Sim = +Y in Bevy) - Blue
     gizmos.arrow(origin, origin + Vec3::new(0.0, len, 0.0), Color::srgb(0.3, 0.6, 1.0));
+}
+
+/// Draw ground grid lines across the level area in Bevy coordinates.
+pub fn draw_grid_gizmos(mut gizmos: Gizmos) {
+    if !SHOW_GRID {
+        return;
+    }
+
+    let min_x = -1.5_f32;
+    let max_x = 8.5_f32;
+    let min_sim_y = -1.5_f32;
+    let max_sim_y = 7.5_f32;
+
+    let floor_y = -0.49_f32;
+    let grid_color = Color::srgba(0.3, 0.35, 0.45, 0.35);
+
+    // Grid lines along X (varying Sim Y => Bevy Z = -sim_y)
+    let mut sim_y = min_sim_y;
+    while sim_y <= max_sim_y + 0.01 {
+        let z = -sim_y;
+        gizmos.line(
+            Vec3::new(min_x, floor_y, z),
+            Vec3::new(max_x, floor_y, z),
+            grid_color,
+        );
+        sim_y += 1.0;
+    }
+
+    // Grid lines along Y (varying Sim X => Bevy X)
+    let mut x = min_x;
+    while x <= max_x + 0.01 {
+        gizmos.line(
+            Vec3::new(x, floor_y, -min_sim_y),
+            Vec3::new(x, floor_y, -max_sim_y),
+            grid_color,
+        );
+        x += 1.0;
+    }
+}
+
+/// Spawn 3D text labels on the floor along the -X and -Y borders showing grid coordinate numbers.
+pub fn setup_grid_labels(mut commands: Commands) {
+    if !SHOW_GRID_LABELS {
+        return;
+    }
+
+    let floor_y = -0.30_f32;
+    let label_color = Color::srgb(0.9, 0.95, 1.0);
+    // Angled slightly towards the camera for clear isometric readability
+    let rotation = Quat::from_rotation_x(-1.15);
+    let scale = Vec3::splat(0.032);
+
+    // X-axis coordinate numbers along the -Y (bottom) border (Sim Y = -2.6 => Bevy Z = 2.6)
+    for x in -1..=8 {
+        commands.spawn((
+            Text2d::new(format!("{x}")),
+            TextFont::from_font_size(26.0),
+            TextColor(label_color),
+            Transform::from_translation(Vec3::new(x as f32, floor_y, 2.6))
+                .with_rotation(rotation)
+                .with_scale(scale),
+        ));
+    }
+    commands.spawn((
+        Text2d::new("+X →"),
+        TextFont::from_font_size(26.0),
+        TextColor(Color::srgb(1.0, 0.4, 0.4)),
+        Transform::from_translation(Vec3::new(9.4, floor_y, 2.6))
+            .with_rotation(rotation)
+            .with_scale(scale),
+    ));
+
+    // Y-axis coordinate numbers along the -X (left) border (Sim X = -2.6 => Bevy X = -2.6)
+    for y in -1..=7 {
+        commands.spawn((
+            Text2d::new(format!("{y}")),
+            TextFont::from_font_size(26.0),
+            TextColor(label_color),
+            Transform::from_translation(Vec3::new(-2.6, floor_y, -(y as f32)))
+                .with_rotation(rotation)
+                .with_scale(scale),
+        ));
+    }
+    commands.spawn((
+        Text2d::new("+Y ↑"),
+        TextFont::from_font_size(26.0),
+        TextColor(Color::srgb(0.4, 1.0, 0.4)),
+        Transform::from_translation(Vec3::new(-2.6, floor_y, -8.2))
+            .with_rotation(rotation)
+            .with_scale(scale),
+    ));
 }

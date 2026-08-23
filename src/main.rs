@@ -29,7 +29,14 @@ fn main() {
             ..default()
         }))
         .init_resource::<input::PendingAction>()
-        .add_systems(Startup, (setup_game, render::setup_render_assets))
+        .add_systems(
+            Startup,
+            (
+                setup_game,
+                render::setup_render_assets,
+                render::setup_grid_labels,
+            ),
+        )
         .add_systems(
             Update,
             (
@@ -39,6 +46,7 @@ fn main() {
                 render::sync_lasers.after(apply_action),
                 render::animate_laser_pfx,
                 render::draw_coordinate_gizmo,
+                render::draw_grid_gizmos,
                 update_victory_ui,
             ),
         )
@@ -55,7 +63,7 @@ fn setup_game(mut commands: Commands) {
     // --- camera (isometric top-down view centered on the larger level) ----
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(3.5, 16.0, 5.0)
+        Transform::from_xyz(3.5, 17.5, 5.5)
             .looking_at(Vec3::new(3.5, 0.0, -3.0), Vec3::Y),
     ));
 

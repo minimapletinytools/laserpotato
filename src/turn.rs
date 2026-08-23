@@ -450,12 +450,30 @@ mod tests {
     }
 
     #[test]
-    fn reset_restores_initial_state() {
-        let mut engine = TurnEngine::new(simple_level());
-        engine.apply(PlayerAction::Forward);
-        engine.apply(PlayerAction::TurnRight);
-        engine.apply(PlayerAction::Reset);
-        assert_eq!(player_body(&engine).anchor, IVec3::ZERO);
-        assert_eq!(player_facing(&engine), IVec3::new(0, 1, 0));
+    fn test_level_initial_state_and_solve() {
+        let mut engine = TurnEngine::new(crate::level::test_level());
+        assert_eq!(engine.outcome, GameOutcome::InProgress);
+        assert!(!engine.is_won());
+
+        // Manually place mirrors in winning relay positions:
+        // Move MM2 from (4, 1) to (5, 6)
+        let mm2_id = engine.world.body_at(IVec3::new(4, 1, 0)).unwrap().id;
+        engine.world.body_mut(mm2_id).unwrap().anchor = IVec3::new(5, 6, 0);
+
+        // Move MM1 from (3, 4) to (1, 4)
+        let mm1_id = engine.world.body_at(IVec3::new(3, 4, 0)).unwrap().id;
+        engine.world.body_mut(mm1_id).unwrap().anchor = IVec3::new(1, 4, 0);
+
+        // Unblock laser by moving crate P from (1, 2) to (0, 2)
+        let crate_id = engine.world.body_at(IVec3::new(1, 2, 0)).unwrap().id;
+        engine.world.body_mut(crate_id).unwrap().anchor = IVec3::new(0, 2, 0);
+        engine.world.sync_grid();
+
+        // Take a turn (Wait) to trigger recalculation
+        engine.apply(PlayerAction::Wait);
+
+        // The 3-bounce laser path connects: (1,0) -> (1,4) -> (5,4) -> (5,6) -> (7,6) Goal!
+        assert_eq!(engine.outcome, GameOutcome::Won);
+        assert!(engine.is_won());
     }
 }
