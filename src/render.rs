@@ -38,6 +38,7 @@ pub struct LaserGlowPulse {
 #[derive(Resource)]
 pub struct RenderAssets {
     pub cube_mesh: Handle<Mesh>,
+    pub player_mesh: Handle<Mesh>,
     pub mirror_mesh: Handle<Mesh>,
     pub indicator_mesh: Handle<Mesh>,
     pub laser_core_mesh: Handle<Mesh>,
@@ -63,6 +64,7 @@ pub fn setup_render_assets(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let cube = meshes.add(Cuboid::new(0.9, 0.9, 0.9));
+    let player = meshes.add(create_dodecahedron_mesh());
     let mirror = meshes.add(create_mirror_mesh());
     let indicator = meshes.add(Cuboid::new(0.3, 0.3, 0.15));
 
@@ -74,6 +76,7 @@ pub fn setup_render_assets(
 
     commands.insert_resource(RenderAssets {
         cube_mesh: cube,
+        player_mesh: player,
         mirror_mesh: mirror,
         indicator_mesh: indicator,
         laser_core_mesh,
@@ -152,6 +155,98 @@ pub fn setup_render_assets(
 // ---------------------------------------------------------------------------
 // Custom meshes
 // ---------------------------------------------------------------------------
+
+/// Construct a regular dodecahedron mesh for the player character.
+fn create_dodecahedron_mesh() -> Mesh {
+    let phi = (1.0 + 5.0_f32.sqrt()) / 2.0; // ~1.618034
+    let inv_phi = 1.0 / phi;                // ~0.618034
+    let s = 0.25; // Scale so bounding radius is ~0.43 (fits nicely in 0.9 grid unit)
+
+    let a = s;
+    let b = s * inv_phi;
+    let c = s * phi;
+
+    // 20 vertices of regular dodecahedron
+    let verts = [
+        // 8 cube vertices (±a, ±a, ±a)
+        Vec3::new(-a, -a, -a), Vec3::new(-a, -a,  a),
+        Vec3::new(-a,  a, -a), Vec3::new(-a,  a,  a),
+        Vec3::new( a, -a, -a), Vec3::new( a, -a,  a),
+        Vec3::new( a,  a, -a), Vec3::new( a,  a,  a),
+        // 4 YZ plane (0, ±b, ±c)
+        Vec3::new(0.0, -b, -c), Vec3::new(0.0, -b,  c),
+        Vec3::new(0.0,  b, -c), Vec3::new(0.0,  b,  c),
+        // 4 XY plane (±b, ±c, 0)
+        Vec3::new(-b, -c, 0.0), Vec3::new(-b,  c, 0.0),
+        Vec3::new( b, -c, 0.0), Vec3::new( b,  c, 0.0),
+        // 4 XZ plane (±c, 0, ±b)
+        Vec3::new(-c, 0.0, -b), Vec3::new(-c, 0.0,  b),
+        Vec3::new( c, 0.0, -b), Vec3::new( c, 0.0,  b),
+    ];
+
+    // 12 face normals (pointing from origin to face centers)
+    let p = phi;
+    let face_normals = [
+        Vec3::new( 0.0,  1.0,  p), Vec3::new( 0.0,  1.0, -p),
+        Vec3::new( 0.0, -1.0,  p), Vec3::new( 0.0, -1.0, -p),
+        Vec3::new( 1.0,  p,  0.0), Vec3::new( 1.0, -p,  0.0),
+        Vec3::new(-1.0,  p,  0.0), Vec3::new(-1.0, -p,  0.0),
+        Vec3::new( p,  0.0,  1.0), Vec3::new( p,  0.0, -1.0),
+        Vec3::new(-p,  0.0,  1.0), Vec3::new(-p,  0.0, -1.0),
+    ];
+
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut indices = Vec::new();
+    let mut uvs = Vec::new();
+
+    for n in face_normals {
+        let norm = n.normalize();
+
+        // Find the 5 vertices that belong to this face (highest dot product with normal)
+        let mut face_verts: Vec<Vec3> = verts.iter().copied().collect();
+        face_verts.sort_by(|v1, v2| {
+            v2.dot(norm).partial_cmp(&v1.dot(norm)).unwrap()
+        });
+        let mut pentagon: Vec<Vec3> = face_verts.into_iter().take(5).collect();
+
+        // Calculate face center
+        let center: Vec3 = pentagon.iter().sum::<Vec3>() / 5.0;
+
+        // Build tangent and bitangent in the face plane
+        let tangent = (pentagon[0] - center).normalize();
+        let bitangent = norm.cross(tangent);
+
+        // Sort pentagon vertices CCW around the outward normal
+        pentagon.sort_by(|v1, v2| {
+            let d1 = *v1 - center;
+            let d2 = *v2 - center;
+            let angle1 = d1.dot(bitangent).atan2(d1.dot(tangent));
+            let angle2 = d2.dot(bitangent).atan2(d2.dot(tangent));
+            angle1.partial_cmp(&angle2).unwrap()
+        });
+
+        let base_idx = positions.len() as u32;
+        for v in &pentagon {
+            positions.push([v.x, v.y, v.z]);
+            normals.push([norm.x, norm.y, norm.z]);
+            uvs.push([0.5, 0.5]);
+        }
+
+        // Triangulate pentagon (0, 1, 2), (0, 2, 3), (0, 3, 4)
+        indices.extend_from_slice(&[
+            base_idx, base_idx + 1, base_idx + 2,
+            base_idx, base_idx + 2, base_idx + 3,
+            base_idx, base_idx + 3, base_idx + 4,
+        ]);
+    }
+
+    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+        .with_inserted_indices(Indices::U32(indices))
+}
 
 /// Right-triangular prism for the mirror.
 ///
@@ -275,7 +370,7 @@ pub fn sync_bodies(
         }
 
         let (mesh, material) = match body.kind {
-            BlockKind::Player => (assets.cube_mesh.clone(), assets.player_mat.clone()),
+            BlockKind::Player => (assets.player_mesh.clone(), assets.player_mat.clone()),
             BlockKind::Wall => (assets.cube_mesh.clone(), assets.wall_mat.clone()),
             BlockKind::Pushable => (assets.cube_mesh.clone(), assets.pushable_mat.clone()),
             BlockKind::Mirror => (assets.mirror_mesh.clone(), assets.mirror_mat.clone()),
