@@ -5,13 +5,12 @@
 //! cloneable/hashable state (`World`'s body list) and pure step functions on
 //! top of it, so the exact same state can later run headless — undo/redo, a
 //! BFS/IDA* solver for level validation — as well as drive rendering.
-//!
-//! Movement/push resolution and rotation-style semantics are deliberately not
-//! implemented yet; this file is just the data types they'll operate on.
 
 use std::collections::HashMap;
 
 use glam::IVec3;
+
+use crate::block_types::BlockKind;
 
 /// Stable handle for a [`Body`]. Indices, not references, so state stays
 /// `Copy`/`Hash`/serializable without borrow-checker fights.
@@ -46,6 +45,16 @@ impl CubeRot {
     /// 90° about the local Z axis.
     pub const ROT_Z_90: CubeRot = CubeRot {
         mat: [[0, -1, 0], [1, 0, 0], [0, 0, 1]],
+    };
+
+    /// 180° about the local Z axis.
+    pub const ROT_Z_180: CubeRot = CubeRot {
+        mat: [[-1, 0, 0], [0, -1, 0], [0, 0, 1]],
+    };
+
+    /// 270° about the local Z axis (equivalently, −90°).
+    pub const ROT_Z_270: CubeRot = CubeRot {
+        mat: [[0, 1, 0], [-1, 0, 0], [0, 0, 1]],
     };
 
     /// Apply this rotation to a local-space offset, producing a world-space offset.
@@ -83,6 +92,11 @@ impl CubeRot {
                 [m[0][2], m[1][2], m[2][2]],
             ],
         }
+    }
+
+    /// Access the raw 3×3 rotation matrix (rows of column components).
+    pub fn mat(&self) -> [[i32; 3]; 3] {
+        self.mat
     }
 }
 
@@ -184,6 +198,7 @@ impl TagSet {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Body {
     pub id: BodyId,
+    pub kind: BlockKind,
     pub anchor: IVec3,
     pub orientation: CubeRot,
     pub shape: Vec<IVec3>,
@@ -191,9 +206,10 @@ pub struct Body {
 }
 
 impl Body {
-    pub fn new(id: BodyId, anchor: IVec3, shape: Vec<IVec3>) -> Self {
+    pub fn new(id: BodyId, kind: BlockKind, anchor: IVec3, shape: Vec<IVec3>) -> Self {
         Self {
             id,
+            kind,
             anchor,
             orientation: CubeRot::IDENTITY,
             shape,
@@ -258,6 +274,7 @@ pub struct World {
     bodies: Vec<Body>,
     grid: Grid,
     next_id: u32,
+    player_id: Option<BodyId>,
 }
 
 impl World {
@@ -265,10 +282,16 @@ impl World {
         Self::default()
     }
 
-    pub fn spawn(&mut self, anchor: IVec3, shape: Vec<IVec3>) -> BodyId {
+    /// Spawn a new body of the given kind at `anchor` with the given `shape`.
+    /// If `kind` is [`BlockKind::Player`], the world remembers it for fast
+    /// lookup via [`player_id()`](Self::player_id).
+    pub fn spawn(&mut self, kind: BlockKind, anchor: IVec3, shape: Vec<IVec3>) -> BodyId {
         let id = BodyId(self.next_id);
         self.next_id += 1;
-        self.bodies.push(Body::new(id, anchor, shape));
+        if kind == BlockKind::Player {
+            self.player_id = Some(id);
+        }
+        self.bodies.push(Body::new(id, kind, anchor, shape));
         self.grid.rebuild(&self.bodies);
         id
     }
@@ -289,6 +312,17 @@ impl World {
         &self.grid
     }
 
+    /// The player body's id, if one has been spawned.
+    pub fn player_id(&self) -> Option<BodyId> {
+        self.player_id
+    }
+
+    /// Look up the body occupying `pos`, if any.
+    pub fn body_at(&self, pos: IVec3) -> Option<&Body> {
+        let id = self.grid.occupant_at(pos)?;
+        self.body(id)
+    }
+
     /// Call after directly mutating body positions/orientations to keep the
     /// spatial index in sync.
     pub fn sync_grid(&mut self) {
@@ -299,6 +333,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::block_types::BlockKind;
 
     #[test]
     fn identity_rotation_is_a_no_op() {
@@ -327,10 +362,12 @@ mod tests {
     #[test]
     fn multi_cell_body_world_cells_follow_orientation() {
         // a 2-cell body lying along local X, anchored at (0,0,0)
-        let mut body = Body::new(BodyId(0), IVec3::new(0, 0, 0), vec![
+        let mut body = Body::new(
+            BodyId(0),
+            BlockKind::Pushable,
             IVec3::new(0, 0, 0),
-            IVec3::new(1, 0, 0),
-        ]);
+            vec![IVec3::new(0, 0, 0), IVec3::new(1, 0, 0)],
+        );
         assert_eq!(
             body.world_cells(),
             vec![IVec3::new(0, 0, 0), IVec3::new(1, 0, 0)]
@@ -367,11 +404,28 @@ mod tests {
     fn grid_tracks_all_cells_of_a_multi_cell_body() {
         let mut world = World::new();
         let id = world.spawn(
+            BlockKind::Pushable,
             IVec3::new(0, 0, 0),
             vec![IVec3::new(0, 0, 0), IVec3::new(1, 0, 0)],
         );
         assert_eq!(world.grid().occupant_at(IVec3::new(0, 0, 0)), Some(id));
         assert_eq!(world.grid().occupant_at(IVec3::new(1, 0, 0)), Some(id));
         assert_eq!(world.grid().occupant_at(IVec3::new(2, 0, 0)), None);
+    }
+
+    #[test]
+    fn player_id_tracked_on_spawn() {
+        let mut world = World::new();
+        assert_eq!(world.player_id(), None);
+        let pid = world.spawn(BlockKind::Player, IVec3::ZERO, vec![IVec3::ZERO]);
+        assert_eq!(world.player_id(), Some(pid));
+    }
+
+    #[test]
+    fn body_at_returns_occupant() {
+        let mut world = World::new();
+        world.spawn(BlockKind::Wall, IVec3::new(3, 0, 0), vec![IVec3::ZERO]);
+        assert!(world.body_at(IVec3::new(3, 0, 0)).is_some());
+        assert!(world.body_at(IVec3::new(4, 0, 0)).is_none());
     }
 }
