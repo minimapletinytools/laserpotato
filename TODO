@@ -1,10 +1,7 @@
 
 
 
--get grid numbers to show correctly
-
-
--level editor
+DONE-level editor
     -a menu on the left to choose from list of blocks, zoomable
     -blocks are just their base blocks (block, mirror, laser, wall) and thene there's a property selector that lets you choose if it is stationary or moveable, but note that note all blocks can take both properties, e.g. wallsa re always stationary, in these cases invalid option are greyed out
     -grid shows as before,
@@ -16,7 +13,13 @@
     -level should have a attempt to solve button (runs in a background thread with 30s timeout)
     -level should have a "test level"
     -if solver found a solution, there should be a test level with solution, solution is keyed to the level hash so that if you make changes it doesnt' try to reuse the same solution.
--do potato solver
+DONE-do potato solver
+
+-get grid numbers to show correctly
+-allow block reflection (48 block statse?)
+-during level edit mode, laser should reflect
+-level editor block selectionpreview fix pls
+
 -do some research into building solve
     -grouping moves?
     -identify certain types of "moves"

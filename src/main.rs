@@ -45,9 +45,30 @@ pub struct VictoryBanner;
 #[derive(Component)]
 pub struct VictoryBannerText;
 
+/// Configuration for automated screenshot capture and self-render testing.
+#[derive(Resource)]
+pub struct ScreenshotConfig {
+    pub output_path: Option<String>,
+    pub frame_counter: u32,
+    pub target_frame: u32,
+}
+
+impl Default for ScreenshotConfig {
+    fn default() -> Self {
+        Self {
+            output_path: None,
+            frame_counter: 0,
+            target_frame: 20,
+        }
+    }
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     let mut replay_file = None;
+    let mut screenshot_path = None;
+    let mut target_frame = 20;
+    let mut initial_mode = editor::AppMode::Editor;
 
     let mut i = 1;
     while i < args.len() {
@@ -60,13 +81,34 @@ fn main() {
                     replay_file = Some(String::from("solution.json"));
                 }
             }
+            "-s" | "--screenshot" => {
+                if i + 1 < args.len() && !args[i + 1].starts_with('-') {
+                    i += 1;
+                    screenshot_path = Some(args[i].clone());
+                } else {
+                    screenshot_path = Some(String::from("screenshot.png"));
+                }
+            }
+            "--frames" => {
+                if i + 1 < args.len() {
+                    i += 1;
+                    if let Ok(n) = args[i].parse::<u32>() {
+                        target_frame = n;
+                    }
+                }
+            }
+            "--playtest" => {
+                initial_mode = editor::AppMode::Playtest;
+            }
+            "--editor" => {
+                initial_mode = editor::AppMode::Editor;
+            }
             _ => {}
         }
         i += 1;
     }
 
     let mut playback = PlaybackState::default();
-    let mut initial_mode = editor::AppMode::Editor;
 
     if let Some(file_path) = replay_file {
         match solver::load_actions_from_file(&file_path) {
@@ -90,6 +132,12 @@ fn main() {
         }
     }
 
+    let screenshot_config = ScreenshotConfig {
+        output_path: screenshot_path,
+        frame_counter: 0,
+        target_frame,
+    };
+
     let mut app = App::new();
     app.add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
@@ -100,6 +148,7 @@ fn main() {
             ..default()
         }))
         .insert_resource(playback)
+        .insert_resource(screenshot_config)
         .add_plugins(editor::EditorPlugin)
         .add_systems(
             Startup,
@@ -120,15 +169,39 @@ fn main() {
                 render::draw_coordinate_gizmo,
                 render::draw_grid_gizmos,
                 update_victory_ui,
+                screenshot_system,
             ),
         );
 
-    // If --replay was passed, start directly in Playback mode
-    if initial_mode == editor::AppMode::Playback {
-        app.insert_state(editor::AppMode::Playback);
+    // Initial state dispatch
+    if initial_mode != editor::AppMode::Editor {
+        app.insert_state(initial_mode);
     }
 
     app.run();
+}
+
+/// System for capturing in-engine screenshots and exiting cleanly for automated testing.
+fn screenshot_system(
+    mut commands: Commands,
+    mut config: ResMut<ScreenshotConfig>,
+) {
+    let path = match &config.output_path {
+        Some(p) => p.clone(),
+        None => return,
+    };
+    config.frame_counter += 1;
+
+    if config.frame_counter == config.target_frame {
+        commands
+            .spawn(bevy::render::view::screenshot::Screenshot::primary_window())
+            .observe(bevy::render::view::screenshot::save_to_disk(path.clone()));
+    }
+
+    if config.frame_counter >= config.target_frame + 6 {
+        println!("[✓] Automated screenshot captured to '{}'.", path);
+        std::process::exit(0);
+    }
 }
 
 /// Create the simulation world from the test level, spawn camera, lights, and HUD.

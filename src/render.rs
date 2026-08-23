@@ -488,20 +488,20 @@ fn create_mirror_mesh() -> Mesh {
 
     #[rustfmt::skip]
     let positions: Vec<[f32; 3]> = vec![
-        // --- Top cap (+Y: CCW when viewed from above) ---
-        [-s,  s,  s],  [ s,  s, -s],  [-s,  s, -s],   // 0 1 2
+        // --- Top cap (+Y in Bevy = +Z in Sim: CCW viewed from +Y) ---
+        [-s,  s, -s],  [ s,  s,  s],  [ s,  s, -s],   // 0 1 2
 
-        // --- Bottom cap (-Y: CCW when viewed from below) ---
-        [-s, -s,  s],  [-s, -s, -s],  [ s, -s, -s],   // 3 4 5
+        // --- Bottom cap (-Y in Bevy = -Z in Sim: CCW viewed from -Y) ---
+        [-s, -s, -s],  [ s, -s,  s],  [ s, -s, -s],   // 3 4 5
 
-        // --- Back wall 1 (-Z: CCW when viewed from -Z) ---
-        [-s, -s, -s],  [-s,  s, -s],  [ s,  s, -s],  [ s, -s, -s],  // 6 7 8 9
+        // --- Back wall 1 (+X in Sim = East, +X in Bevy: CCW viewed from +X) ---
+        [ s,  s, -s],  [ s,  s,  s],  [ s, -s,  s],  [ s, -s, -s],  // 6 7 8 9
 
-        // --- Back wall 2 (-X: CCW when viewed from -X) ---
-        [-s, -s,  s],  [-s,  s,  s],  [-s,  s, -s],  [-s, -s, -s],  // 10 11 12 13
+        // --- Back wall 2 (+Y in Sim = North, -Z in Bevy: CCW viewed from -Z) ---
+        [-s,  s, -s],  [ s,  s, -s],  [ s, -s, -s],  [-s, -s, -s],  // 10 11 12 13
 
-        // --- Hypotenuse (+X, +Z: CCW when viewed from +X, +Z) ---
-        [-s, -s,  s],  [ s, -s, -s],  [ s,  s, -s],  [-s,  s,  s],  // 14 15 16 17
+        // --- Hypotenuse (South-West in Sim: [-n, 0, n] in Bevy: CCW viewed from [-n, 0, n]) ---
+        [ s,  s,  s],  [-s,  s, -s],  [-s, -s, -s],  [ s, -s,  s],  // 14 15 16 17
     ];
 
     #[rustfmt::skip]
@@ -510,26 +510,26 @@ fn create_mirror_mesh() -> Mesh {
         [0., 1., 0.],  [0., 1., 0.],  [0., 1., 0.],
         // Bottom (-Y)
         [0.,-1., 0.],  [0.,-1., 0.],  [0.,-1., 0.],
-        // Back wall 1 (-Z)
+        // Back wall 1 (+X)
+        [1., 0., 0.],  [1., 0., 0.],  [1., 0., 0.],  [1., 0., 0.],
+        // Back wall 2 (-Z)
         [0., 0.,-1.],  [0., 0.,-1.],  [0., 0.,-1.],  [0., 0.,-1.],
-        // Back wall 2 (-X)
-        [-1., 0., 0.], [-1., 0., 0.], [-1., 0., 0.], [-1., 0., 0.],
-        // Hypotenuse (+X, +Z)
-        [n, 0., n],    [n, 0., n],    [n, 0., n],    [n, 0., n],
+        // Hypotenuse ([-n, 0, n])
+        [-n, 0., n],   [-n, 0., n],   [-n, 0., n],   [-n, 0., n],
     ];
 
     #[rustfmt::skip]
     let uvs: Vec<[f32; 2]> = vec![
         // Top
-        [0.0, 1.0], [1.0, 0.0], [0.0, 0.0],
+        [0.0, 1.0], [1.0, 1.0], [1.0, 0.0],
         // Bottom
-        [0.0, 1.0], [0.0, 0.0], [1.0, 0.0],
+        [0.0, 1.0], [1.0, 0.0], [1.0, 1.0],
         // Back wall 1
-        [0.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, 0.0],
-        // Back wall 2
-        [0.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, 0.0],
-        // Hypotenuse
         [0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0],
+        // Back wall 2
+        [0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0],
+        // Hypotenuse
+        [1.0, 0.0], [0.0, 0.0], [0.0, 1.0], [1.0, 1.0],
     ];
 
     #[rustfmt::skip]
@@ -762,7 +762,7 @@ pub fn sync_lasers(
 
             let s_end = if let Some(hit) = &segment.hit {
                 if let Some(hit_body) = world.body(hit.body_id) {
-                    if hit_body.kind == BlockKind::Mirror {
+                    if hit_body.properties().reflect_laser(segment.direction, &hit_body.orientation).is_some() {
                         hit.cell.as_vec3()
                     } else {
                         hit.cell.as_vec3() - segment.direction.as_vec3() * 0.5

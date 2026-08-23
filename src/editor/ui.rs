@@ -109,7 +109,7 @@ pub fn setup_editor_ui(mut commands: Commands) {
                         spawn_action_btn(group, EditorAction::NewLevel, "New Level");
                         spawn_action_btn(group, EditorAction::Save, "Save");
                         spawn_action_btn(group, EditorAction::SaveAs, "Save As...");
-                        spawn_action_btn(group, EditorAction::ToggleLevelsMenu, "📂 Levels");
+                        spawn_action_btn(group, EditorAction::ToggleLevelsMenu, "[Levels]");
                     });
 
                 // Center group: Solver badge & Attempt to Solve
@@ -126,7 +126,7 @@ pub fn setup_editor_ui(mut commands: Commands) {
                             TextFont::from_font_size(13.0),
                             TextColor(TEXT_MUTED),
                         ));
-                        spawn_action_btn(group, EditorAction::AttemptSolve, "⚡ Attempt to Solve");
+                        spawn_action_btn(group, EditorAction::AttemptSolve, "Solve Level");
                     });
 
                 // Right group: Playtest & Replay Mode controls
@@ -137,8 +137,8 @@ pub fn setup_editor_ui(mut commands: Commands) {
                         ..default()
                     })
                     .with_children(|group| {
-                        spawn_action_btn(group, EditorAction::TestPlay, "▶ Test Play");
-                        spawn_action_btn(group, EditorAction::TestWithSolution, "★ Test with Solution");
+                        spawn_action_btn(group, EditorAction::TestPlay, "Test Play");
+                        spawn_action_btn(group, EditorAction::TestWithSolution, "Test with Solution");
                     });
             });
 
@@ -199,7 +199,7 @@ pub fn setup_editor_ui(mut commands: Commands) {
                                 ));
                                 box_node.spawn((
                                     PalettePreviewLabel,
-                                    Text::new("🪞 Mirror (Moveable)"),
+                                    Text::new("Mirror (Moveable)"),
                                     TextFont::from_font_size(11.0),
                                     TextColor(TEXT_PRIMARY),
                                 ));
@@ -207,12 +207,12 @@ pub fn setup_editor_ui(mut commands: Commands) {
 
                         // Base Block Buttons
                         let blocks = [
-                            (BlockKind::Player, "👤 Player"),
-                            (BlockKind::Mirror, "🪞 Mirror"),
-                            (BlockKind::LaserSource, "🔴 Laser Source"),
-                            (BlockKind::Pushable, "📦 Pushable Crate"),
-                            (BlockKind::Wall, "🧱 Wall"),
-                            (BlockKind::Goal, "⭐ Goal Pyramid"),
+                            (BlockKind::Player, "[P] Player"),
+                            (BlockKind::Mirror, "[M] Mirror"),
+                            (BlockKind::LaserSource, "[L] Laser Source"),
+                            (BlockKind::Pushable, "[C] Pushable Crate"),
+                            (BlockKind::Wall, "[W] Wall"),
+                            (BlockKind::Goal, "[G] Goal Pyramid"),
                         ];
 
                         for (kind, label) in blocks {
@@ -354,7 +354,7 @@ pub fn setup_editor_ui(mut commands: Commands) {
                                 ))
                                 .with_children(|btn| {
                                     btn.spawn((
-                                        Text::new("↺ CCW (Z+90)"),
+                                        Text::new("CCW (Z+90)"),
                                         TextFont::from_font_size(11.0),
                                         TextColor(TEXT_PRIMARY),
                                     ));
@@ -374,7 +374,7 @@ pub fn setup_editor_ui(mut commands: Commands) {
                                 ))
                                 .with_children(|btn| {
                                     btn.spawn((
-                                        Text::new("↻ CW (Z-90)"),
+                                        Text::new("CW (Z-90)"),
                                         TextFont::from_font_size(11.0),
                                         TextColor(TEXT_PRIMARY),
                                     ));
@@ -419,7 +419,7 @@ pub fn setup_editor_ui(mut commands: Commands) {
                             ))
                             .with_children(|btn| {
                                 btn.spawn((
-                                    Text::new("🗑 Delete Block"),
+                                    Text::new("Delete Block"),
                                     TextFont::from_font_size(12.0),
                                     TextColor(TEXT_PRIMARY),
                                 ));
@@ -515,12 +515,12 @@ pub fn update_editor_ui_system(
         };
         let prop_str = if is_fixed { "Stationary" } else { "Moveable" };
         let icon_name = match editor.selected_kind {
-            BlockKind::Player => "👤 Player".into(),
-            BlockKind::Mirror => format!("🪞 Mirror ({})", prop_str),
-            BlockKind::LaserSource => format!("🔴 Laser ({})", prop_str),
-            BlockKind::Pushable => format!("📦 Crate ({})", prop_str),
-            BlockKind::Wall => "🧱 Wall (Stationary)".into(),
-            BlockKind::Goal => "⭐ Goal (Stationary)".into(),
+            BlockKind::Player => "Player".into(),
+            BlockKind::Mirror => format!("Mirror ({})", prop_str),
+            BlockKind::LaserSource => format!("Laser Source ({})", prop_str),
+            BlockKind::Pushable => format!("Pushable Crate ({})", prop_str),
+            BlockKind::Wall => "Wall (Stationary)".into(),
+            BlockKind::Goal => "Goal Pyramid (Stationary)".into(),
         };
         text.0 = icon_name;
     }

@@ -231,18 +231,21 @@ impl Body {
             .collect()
     }
 
+    /// Return the resolved behavioral properties for this body instance,
+    /// taking into account tags (such as TagKind::Fixed).
+    pub fn properties(&self) -> crate::block_types::BlockProperties {
+        let mut props = self.kind.default_properties();
+        if self.tags.has(TagKind::Fixed) || matches!(self.kind, BlockKind::Wall | BlockKind::Goal) {
+            props.is_pushable = false;
+        } else if self.tags.has(TagKind::Pushable) {
+            props.is_pushable = true;
+        }
+        props
+    }
+
     /// Whether this specific body instance can be pushed.
-    /// TagKind::Fixed explicitly disables pushing.
-    /// TagKind::Pushable explicitly enables pushing.
-    /// Otherwise falls back to the default pushability of its BlockKind.
     pub fn is_pushable(&self) -> bool {
-        if self.tags.has(TagKind::Fixed) {
-            return false;
-        }
-        if self.tags.has(TagKind::Pushable) {
-            return true;
-        }
-        self.kind.is_pushable()
+        self.properties().is_pushable
     }
 
     /// Whether this specific body is fixed/stationary.
