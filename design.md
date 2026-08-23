@@ -51,20 +51,45 @@ states are split into "turns" which one state transforming into the next based o
 
 state updates are fully reversible in order to support undo
 
-### block position transition 
+### the 2 phase split state/block tranistion loop
 
-at each turn, blocks may indicate they want to be in a new position/rotation, and this may prompt other blocks to move and change state
+we provide the option of splitting position and non position state transitions into 2 phases
 
-1. create a queue of movements
-2. add all ojbects with move intentions onto the stack in order of priority, resolving by block position if there is a priority tie
-3. process blocks on the queue
-    - move the block, (which may also update other parts of its state)
-    - push any downstream movement effects into the queue, marking it as being caused by the block above
+we can optionally combine them to see which one presents more interesting behavior
+
+the algorithm is as follows
+
+at each turn, blocks may indicate they want to be in a new state/position/rotation (based on prev state and user input)
+
+#### the split algorithm
+
+for simplicity, position refers to position/rotation, and state refers to non position/rotation state
+
+1. add all ojbects with move intentions onto the movement queue in order of priority, resolving by block position if there is a priority tie
+2. process blocks on the queue
+    - move the block, push any state changes onto the queue,marking it as being caused by this block move
+    - based on new block position, compute downstream movements and push onto the movement movement queue, marking it as being caused by the block above
+        - state are not possible here, but if ther were you would also push them onto the state queue
     - if a movement is illegal
         - don't move the block
-        - if it was caused by some block, roll back the stack to that block and treat that move as illegal
+        - if it was caused by some block, roll back the queue to that block and treat that move as illegal (don't forget to roll back the state queue as well)
+    - repeat until the queue is empty
+3. process locks on the state queue
+    - same as step 2 but with state and position swapped
+    - if any state change in the initial queue is illegal, you will roll back to previous step, marking that move as illegal
+4. repeat until all queues are empty
 
-repeat until the quee is empty
+
+#### the combined algorithm
+1. add all bolkcs with state intentions onto the queue in order of priority, resolving by coordinates if there is a priority tie
+2. process blocks on the queue
+    - update the block
+    - based on new block state, compute downstream block state changes, marking it as being caused by the block above
+    - if a state change is illegal
+        - revert the state change for that block
+        - if it was caused by some block, roll back the queue to that block and treat that move as illegal (don't forget to roll back the state queue as well)
+    - repeat until the queue is empty
+
 
 ### block state transition
 
