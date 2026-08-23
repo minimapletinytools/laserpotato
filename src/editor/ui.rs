@@ -303,7 +303,7 @@ pub fn setup_editor_ui(mut commands: Commands) {
 
                         // Instructions / shortcuts hint
                         sidebar.spawn((
-                            Text::new("Controls:\n• L-Click: Place / Select\n• R-Click: Delete Block\n• WASD: Pan Camera\n• Scroll: Zoom In/Out"),
+                            Text::new("Controls:\n• L-Click: Place / Select\n• Drag: Move Block\n• R-Click: Delete Block\n• WASD: Pan Camera\n• Scroll: Zoom In/Out"),
                             TextFont::from_font_size(11.0),
                             TextColor(TEXT_MUTED),
                         ));

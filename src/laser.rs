@@ -188,9 +188,9 @@ mod tests {
         let mut world = World::new();
         // Laser at origin pointing +Y.
         world.spawn(BlockKind::LaserSource, IVec3::ZERO, vec![IVec3::ZERO]);
-        // Mirror at (0,3,0) rotated 90° CCW about Z — reflects +Y → -X.
+        // Mirror at (0,3,0) rotated 270° CCW (90° CW) about Z — reflects +Y → -X.
         let mirror_id = world.spawn(BlockKind::Mirror, IVec3::new(0, 3, 0), vec![IVec3::ZERO]);
-        world.body_mut(mirror_id).unwrap().orientation = CubeRot::ROT_Z_90;
+        world.body_mut(mirror_id).unwrap().orientation = CubeRot::ROT_Z_270;
         world.sync_grid();
 
         let segments = cast_all_lasers(&world);

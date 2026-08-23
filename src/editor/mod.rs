@@ -62,6 +62,8 @@ pub struct EditorState {
     pub is_fixed: bool,
     /// Currently selected body on grid for Inspector.
     pub selected_body_id: Option<BodyId>,
+    /// Currently dragging body ID on grid.
+    pub dragging_body_id: Option<BodyId>,
     /// Hovered grid coordinate (X, Y) on the ground plane.
     pub hovered_cell: Option<IVec2>,
     /// Current level file path.
@@ -86,6 +88,7 @@ impl Default for EditorState {
             selected_kind: BlockKind::Mirror,
             is_fixed: false,
             selected_body_id: None,
+            dragging_body_id: None,
             hovered_cell: None,
             current_level_path: String::from("levels/default_puzzle.json"),
             solver_rx: None,
@@ -239,6 +242,23 @@ fn raycast_ground_plane(
     Some(IVec2::new(gx, gy))
 }
 
+/// Helper to check if a body can be moved to a target anchor without colliding with other bodies.
+fn can_move_body_to(world: &World, body_id: BodyId, target_anchor: IVec3) -> bool {
+    let body = match world.body(body_id) {
+        Some(b) => b,
+        None => return false,
+    };
+    for local in &body.shape {
+        let world_cell = target_anchor + body.orientation.apply(*local);
+        if let Some(occ) = world.body_at(world_cell) {
+            if occ.id != body_id {
+                return false;
+            }
+        }
+    }
+    true
+}
+
 fn editor_grid_interaction_system(
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform), With<camera::MainCamera>>,
@@ -307,12 +327,13 @@ fn editor_grid_interaction_system(
     editor.hovered_cell = Some(cell);
     let cell_pos = IVec3::new(cell.x, cell.y, 0);
 
-    // Left Click: Place or Select
+    // Left Click: Place or Select & Start Dragging
     if mouse_button.just_pressed(MouseButton::Left) {
         if let Some(body) = game.engine.world.body_at(cell_pos) {
             let body_id = body.id;
             let kind = body.kind;
             editor.selected_body_id = Some(body_id);
+            editor.dragging_body_id = Some(body_id);
             editor.toast(format!("Selected {:?} at ({}, {})", kind, cell.x, cell.y));
         } else {
             // Cell empty -> place currently selected block from palette
@@ -332,6 +353,8 @@ fn editor_grid_interaction_system(
                     if let Some(p) = game.engine.world.body_mut(player_id) {
                         p.anchor = cell_pos;
                         game.engine.world.sync_grid();
+                        editor.selected_body_id = Some(player_id);
+                        editor.dragging_body_id = Some(player_id);
                         editor.toast("Relocated player character.");
                         editor.cached_solution = None;
                         return;
@@ -347,8 +370,33 @@ fn editor_grid_interaction_system(
             }
             game.engine.world.sync_grid();
             editor.selected_body_id = Some(new_id);
+            editor.dragging_body_id = Some(new_id);
             editor.cached_solution = None;
             editor.toast(format!("Placed {:?} at ({}, {})", kind, cell.x, cell.y));
+        }
+    } else if mouse_button.pressed(MouseButton::Left) {
+        // Continuous Dragging of selected / placed block across grid
+        if let Some(drag_id) = editor.dragging_body_id {
+            if let Some(body) = game.engine.world.body(drag_id) {
+                if body.anchor != cell_pos {
+                    if can_move_body_to(&game.engine.world, drag_id, cell_pos) {
+                        if let Some(b) = game.engine.world.body_mut(drag_id) {
+                            b.anchor = cell_pos;
+                        }
+                        game.engine.world.sync_grid();
+                        editor.cached_solution = None;
+                    }
+                }
+            }
+        }
+    }
+
+    // Release Left Click: End Dragging
+    if mouse_button.just_released(MouseButton::Left) {
+        if let Some(drag_id) = editor.dragging_body_id.take() {
+            if let Some(body) = game.engine.world.body(drag_id) {
+                editor.toast(format!("Moved {:?} to ({}, {})", body.kind, body.anchor.x, body.anchor.y));
+            }
         }
     }
 
@@ -359,6 +407,9 @@ fn editor_grid_interaction_system(
             game.engine.world.despawn(id);
             if editor.selected_body_id == Some(id) {
                 editor.selected_body_id = None;
+            }
+            if editor.dragging_body_id == Some(id) {
+                editor.dragging_body_id = None;
             }
             editor.cached_solution = None;
             editor.toast(format!("Deleted block at ({}, {})", cell.x, cell.y));
@@ -765,5 +816,26 @@ fn toast_decay_system(time: Res<Time>, mut editor: ResMut<EditorState>) {
         if timer.is_finished() {
             editor.status_message = None;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn drag_move_body_validation() {
+        let mut world = World::new();
+        let b1 = world.spawn(BlockKind::Mirror, IVec3::new(1, 1, 0), vec![IVec3::ZERO]);
+        let _b2 = world.spawn(BlockKind::Wall, IVec3::new(2, 1, 0), vec![IVec3::ZERO]);
+
+        // Moving b1 to free cell (1, 2, 0) should be allowed
+        assert!(can_move_body_to(&world, b1, IVec3::new(1, 2, 0)));
+
+        // Moving b1 to cell occupied by b2 (2, 1, 0) should be prevented
+        assert!(!can_move_body_to(&world, b1, IVec3::new(2, 1, 0)));
+
+        // Moving b1 to its own current cell (1, 1, 0) is valid
+        assert!(can_move_body_to(&world, b1, IVec3::new(1, 1, 0)));
     }
 }

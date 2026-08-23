@@ -14,10 +14,16 @@ DONE-level editor
     -level should have a "test level"
     -if solver found a solution, there should be a test level with solution, solution is keyed to the level hash so that if you make changes it doesnt' try to reuse the same solution.
 DONE-do potato solver
+DONE-allow block reflection (48 block statse?)
+DONE-during level edit mode, laser should reflect
 
+-add rotate level by 90 button in editor
+-add ability to place block in 3d in editor (raycast onto existing block mode, and pick Z layer mode)
+
+-improve frame 0 state computations
+    -we save state -0.5 but then show state 0, but then what happens when we want to change state? do we change from state 0 or -0.5
+    -state after returning from test mode needs to reset back to state 0, or state -0.5 and recompute
 -get grid numbers to show correctly
--allow block reflection (48 block statse?)
--during level edit mode, laser should reflect
 -level editor block selectionpreview fix pls
 
 -do some research into building solve

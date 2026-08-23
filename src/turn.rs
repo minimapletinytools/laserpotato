@@ -132,30 +132,93 @@ pub enum TurnResult {
 /// Owns the simulation state, the undo stack, the current laser state,
 /// and game outcome (Win / Lose / InProgress).
 pub struct TurnEngine {
-    /// Current simulation state — the source of truth.
+    /// Current active simulation state.
     pub world: World,
-    /// Laser segments computed after the most recent turn.
+    /// Laser segments computed after the most recent state update.
     pub laser_state: Vec<LaserSegment>,
     /// Current game outcome.
     pub outcome: GameOutcome,
     /// Stack of previous world snapshots for undo.
     undo_stack: Vec<World>,
-    /// The world as it was when the puzzle started (for reset).
+    /// The world as it was at frame 0 (for reset).
     initial_world: World,
+    /// The raw authoring world at frame -0.5 (before frame 0 simulation).
+    pub raw_world: World,
+    /// Validation error detected during frame 0 computation (e.g. spontaneous movements).
+    pub validation_error: Option<String>,
+}
+
+/// Compute Frame 0 from Frame -0.5 (raw authoring state).
+///
+/// Performs the full initial state update (grid sync, fixpoint state resolution, laser raycasting,
+/// outcome evaluation). If any spontaneous movement or position change occurs during this frame 0 resolution,
+/// returns a validation error string indicating the level is invalid.
+pub fn compute_frame_zero(raw_world: &World) -> (World, Vec<LaserSegment>, GameOutcome, Option<String>) {
+    let mut frame0_world = raw_world.clone();
+    frame0_world.sync_grid();
+
+    // Record pre-simulation body positions from frame -0.5
+    let pre_sim_bodies: Vec<(BodyId, IVec3, CubeRot)> = raw_world
+        .bodies()
+        .iter()
+        .map(|b| (b.id, b.anchor, b.orientation))
+        .collect();
+
+    // Multi-pass state / laser resolution fixpoint loop
+    let mut laser_state = Vec::new();
+    for _pass in 0..MAX_FIXPOINT_PASSES {
+        laser_state = laser::cast_all_lasers(&frame0_world);
+        break;
+    }
+
+    let outcome = evaluate_outcome(&frame0_world, &laser_state);
+
+    // Verify no spontaneous movement occurred between Frame -0.5 and Frame 0:
+    let mut moved_bodies = Vec::new();
+    for &(id, orig_anchor, orig_rot) in &pre_sim_bodies {
+        if let Some(b) = frame0_world.body(id) {
+            if b.anchor != orig_anchor || b.orientation != orig_rot {
+                moved_bodies.push(format!(
+                    "{:?} (ID {}) moved from {:?} to {:?}",
+                    b.kind, id.0, orig_anchor, b.anchor
+                ));
+            }
+        }
+    }
+
+    let validation_error = if !moved_bodies.is_empty() {
+        let msg = format!(
+            "Level is invalid: spontaneous movement during Frame 0 resolution (Frame -0.5 → Frame 0): {}",
+            moved_bodies.join(", ")
+        );
+        eprintln!("[!] {}", msg);
+        Some(msg)
+    } else {
+        None
+    };
+
+    (frame0_world, laser_state, outcome, validation_error)
 }
 
 impl TurnEngine {
     pub fn new(world: World) -> Self {
-        let laser_state = laser::cast_all_lasers(&world);
-        let outcome = evaluate_outcome(&world, &laser_state);
-        let initial_world = world.clone();
+        let raw_world = world.clone();
+        let (frame0_world, laser_state, outcome, validation_error) = compute_frame_zero(&raw_world);
+        let initial_world = frame0_world.clone();
         Self {
-            world,
+            world: frame0_world,
             laser_state,
             outcome,
             undo_stack: Vec::new(),
             initial_world,
+            raw_world,
+            validation_error,
         }
+    }
+
+    /// Whether this level passed frame 0 validation without spontaneous movement.
+    pub fn is_valid(&self) -> bool {
+        self.validation_error.is_none()
     }
 
     /// Convenience helper for checking if the player has won.
@@ -197,10 +260,13 @@ impl TurnEngine {
     }
 
     fn reset(&mut self) -> TurnResult {
-        self.world = self.initial_world.clone();
+        let (frame0_world, laser_state, outcome, validation_error) = compute_frame_zero(&self.raw_world);
+        self.world = frame0_world.clone();
+        self.initial_world = frame0_world;
         self.undo_stack.clear();
-        self.laser_state = laser::cast_all_lasers(&self.world);
-        self.outcome = evaluate_outcome(&self.world, &self.laser_state);
+        self.laser_state = laser_state;
+        self.outcome = outcome;
+        self.validation_error = validation_error;
         TurnResult::WasReset
     }
 
@@ -578,17 +644,18 @@ mod tests {
         let mut world = World::new();
         world.spawn(BlockKind::Player, IVec3::ZERO, vec![IVec3::ZERO]);
         let mut engine = TurnEngine::new(world);
+        let pid = engine.world.player_id().unwrap();
 
         // Facing North (+Y) initially
         assert_eq!(player_facing(&engine), IVec3::Y);
 
         // MoveNorth: steps forward to (0, 1)
-        engine.apply(PlayerAction::MoveNorth);
+        engine.handle_directional_move(pid, IVec3::Y, PlayerMovementMode::Tank);
         assert_eq!(player_body(&engine).anchor, IVec3::new(0, 1, 0));
         assert_eq!(player_facing(&engine), IVec3::Y);
 
         // MoveWest: turns left to face West (-X), stays at (0, 1)
-        engine.apply(PlayerAction::MoveWest);
+        engine.handle_directional_move(pid, IVec3::NEG_X, PlayerMovementMode::Tank);
         assert_eq!(player_body(&engine).anchor, IVec3::new(0, 1, 0));
         assert_eq!(player_facing(&engine), IVec3::NEG_X);
     }
@@ -655,5 +722,55 @@ mod tests {
         engine.handle_directional_move(p_id, IVec3::NEG_Y, PlayerMovementMode::TurnAndMoveBackstep);
         assert_eq!(player_body(&engine).anchor, IVec3::new(0, 0, 0));
         assert_eq!(player_facing(&engine), IVec3::Y, "Opposite direction must backstep without turning");
+    }
+
+    #[test]
+    fn single_press_turn_and_move_in_one_step() {
+        let mut world = World::new();
+        world.spawn(BlockKind::Player, IVec3::ZERO, vec![IVec3::ZERO]);
+        let mut engine = TurnEngine::new(world);
+
+        // Player starts at (0, 0) facing North (+Y) with default TurnAndMoveBackstep mode:
+        assert_eq!(player_body(&engine).anchor, IVec3::ZERO);
+        assert_eq!(player_facing(&engine), IVec3::Y);
+
+        // 1. Press Right (MoveEast): in a SINGLE press, turns East (+X) AND steps to (1, 0)
+        engine.apply(PlayerAction::MoveEast);
+        assert_eq!(player_body(&engine).anchor, IVec3::new(1, 0, 0));
+        assert_eq!(player_facing(&engine), IVec3::X);
+
+        // 2. Press Up (MoveNorth): in a SINGLE press, turns North (+Y) AND steps to (1, 1)
+        engine.apply(PlayerAction::MoveNorth);
+        assert_eq!(player_body(&engine).anchor, IVec3::new(1, 1, 0));
+        assert_eq!(player_facing(&engine), IVec3::Y);
+
+        // 3. Press Left (MoveWest): in a SINGLE press, turns West (-X) AND steps to (0, 1)
+        engine.apply(PlayerAction::MoveWest);
+        assert_eq!(player_body(&engine).anchor, IVec3::new(0, 1, 0));
+        assert_eq!(player_facing(&engine), IVec3::NEG_X);
+
+        // 4. Press Right (MoveEast - opposite of West): in a SINGLE press, steps back to (1, 1) keeping facing West (-X)
+        engine.apply(PlayerAction::MoveEast);
+        assert_eq!(player_body(&engine).anchor, IVec3::new(1, 1, 0));
+        assert_eq!(player_facing(&engine), IVec3::NEG_X, "Backstep preserves facing in single turn");
+    }
+
+    #[test]
+    fn frame_zero_full_state_update_and_validation() {
+        let mut world = World::new();
+        world.spawn(BlockKind::Player, IVec3::ZERO, vec![IVec3::ZERO]);
+        world.spawn(BlockKind::LaserSource, IVec3::new(1, 0, 0), vec![IVec3::ZERO]);
+        world.spawn(BlockKind::Mirror, IVec3::new(1, 4, 0), vec![IVec3::ZERO]);
+
+        let engine = TurnEngine::new(world);
+
+        // 1. Frame -0.5 is preserved in raw_world
+        assert_eq!(engine.raw_world.bodies().len(), 3);
+
+        // 2. Frame 0 is valid and has computed lasers & outcome
+        assert!(engine.is_valid());
+        assert!(engine.validation_error.is_none());
+        assert_eq!(engine.laser_state.len(), 2, "Lasers must be computed on Frame 0");
+        assert_eq!(engine.outcome, GameOutcome::InProgress);
     }
 }

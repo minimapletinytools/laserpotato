@@ -495,7 +495,8 @@ fn create_dodecahedron_mesh() -> Mesh {
         .with_inserted_indices(Indices::U32(indices))
 }
 
-/// Right-triangular prism for the mirror.
+/// Right-triangular prism for the canonical "/" mirror.
+/// Hypotenuse faces South-East ([+n, 0, n] in Bevy / [+n, -n] in Sim), back walls on West (-X) and North (+Y in Sim / -Z in Bevy).
 /// All faces are wound Counter-Clockwise (CCW) facing outward.
 fn create_mirror_mesh() -> Mesh {
     let s: f32 = 0.45;
@@ -504,19 +505,19 @@ fn create_mirror_mesh() -> Mesh {
     #[rustfmt::skip]
     let positions: Vec<[f32; 3]> = vec![
         // --- Top cap (+Y in Bevy = +Z in Sim: CCW viewed from +Y) ---
-        [-s,  s, -s],  [ s,  s,  s],  [ s,  s, -s],   // 0 1 2
+        [-s,  s, -s],  [-s,  s,  s],  [ s,  s, -s],   // 0 1 2
 
         // --- Bottom cap (-Y in Bevy = -Z in Sim: CCW viewed from -Y) ---
-        [-s, -s, -s],  [ s, -s,  s],  [ s, -s, -s],   // 3 4 5
+        [-s, -s, -s],  [ s, -s, -s],  [-s, -s,  s],   // 3 4 5
 
-        // --- Back wall 1 (+X in Sim = East, +X in Bevy: CCW viewed from +X) ---
-        [ s,  s, -s],  [ s,  s,  s],  [ s, -s,  s],  [ s, -s, -s],  // 6 7 8 9
+        // --- Back wall 1 (-X in Sim = West, -X in Bevy: CCW viewed from -X) ---
+        [-s,  s,  s],  [-s,  s, -s],  [-s, -s, -s],  [-s, -s,  s],  // 6 7 8 9
 
         // --- Back wall 2 (+Y in Sim = North, -Z in Bevy: CCW viewed from -Z) ---
         [-s,  s, -s],  [ s,  s, -s],  [ s, -s, -s],  [-s, -s, -s],  // 10 11 12 13
 
-        // --- Hypotenuse (South-West in Sim: [-n, 0, n] in Bevy: CCW viewed from [-n, 0, n]) ---
-        [ s,  s,  s],  [-s,  s, -s],  [-s, -s, -s],  [ s, -s,  s],  // 14 15 16 17
+        // --- Hypotenuse (South-East in Sim: [+n, 0, n] in Bevy: CCW viewed from [+n, 0, n]) ---
+        [ s,  s, -s],  [-s,  s,  s],  [-s, -s,  s],  [ s, -s, -s],  // 14 15 16 17
     ];
 
     #[rustfmt::skip]
@@ -525,12 +526,12 @@ fn create_mirror_mesh() -> Mesh {
         [0., 1., 0.],  [0., 1., 0.],  [0., 1., 0.],
         // Bottom (-Y)
         [0.,-1., 0.],  [0.,-1., 0.],  [0.,-1., 0.],
-        // Back wall 1 (+X)
-        [1., 0., 0.],  [1., 0., 0.],  [1., 0., 0.],  [1., 0., 0.],
+        // Back wall 1 (-X)
+        [-1., 0., 0.], [-1., 0., 0.], [-1., 0., 0.], [-1., 0., 0.],
         // Back wall 2 (-Z)
         [0., 0.,-1.],  [0., 0.,-1.],  [0., 0.,-1.],  [0., 0.,-1.],
-        // Hypotenuse ([-n, 0, n])
-        [-n, 0., n],   [-n, 0., n],   [-n, 0., n],   [-n, 0., n],
+        // Hypotenuse ([+n, 0, n])
+        [n, 0., n],    [n, 0., n],    [n, 0., n],    [n, 0., n],
     ];
 
     #[rustfmt::skip]
@@ -564,6 +565,7 @@ fn create_mirror_mesh() -> Mesh {
 }
 
 /// Right-triangular prism for the chiral / reflected mirror (flipped across local X: x ↦ -x).
+/// Hypotenuse faces South-West ([-n, 0, n] in Bevy / [-n, -n] in Sim), back walls on East (+X) and North (+Y in Sim / -Z in Bevy).
 /// All faces are wound Counter-Clockwise (CCW) facing outward with outward-pointing normals.
 fn create_chiral_mirror_mesh() -> Mesh {
     let s: f32 = 0.45;
@@ -572,19 +574,19 @@ fn create_chiral_mirror_mesh() -> Mesh {
     #[rustfmt::skip]
     let positions: Vec<[f32; 3]> = vec![
         // --- Top cap (+Y in Bevy = +Z in Sim: CCW viewed from +Y) ---
-        [ s,  s, -s],  [-s,  s, -s],  [-s,  s,  s],   // 0 1 2
+        [ s,  s, -s],  [-s,  s, -s],  [ s,  s,  s],   // 0 1 2
 
         // --- Bottom cap (-Y in Bevy = -Z in Sim: CCW viewed from -Y) ---
-        [ s, -s, -s],  [-s, -s,  s],  [-s, -s, -s],   // 3 4 5
+        [ s, -s, -s],  [ s, -s,  s],  [-s, -s, -s],   // 3 4 5
 
-        // --- Back wall 1 (-X in Sim = West, -X in Bevy: CCW viewed from -X) ---
-        [-s,  s,  s],  [-s,  s, -s],  [-s, -s, -s],  [-s, -s,  s],  // 6 7 8 9
+        // --- Back wall 1 (+X in Sim = East, +X in Bevy: CCW viewed from +X) ---
+        [ s,  s, -s],  [ s,  s,  s],  [ s, -s,  s],  [ s, -s, -s],  // 6 7 8 9
 
         // --- Back wall 2 (+Y in Sim = North, -Z in Bevy: CCW viewed from -Z) ---
-        [ s,  s, -s],  [-s,  s, -s],  [-s, -s, -s],  [ s, -s, -s],  // 10 11 12 13
+        [-s,  s, -s],  [ s,  s, -s],  [ s, -s, -s],  [-s, -s, -s],  // 10 11 12 13
 
-        // --- Hypotenuse (South-East in Sim: [+n, 0, n] in Bevy: CCW viewed from [+n, 0, n]) ---
-        [-s, -s,  s],  [ s, -s, -s],  [ s,  s, -s],  [-s,  s,  s],  // 14 15 16 17
+        // --- Hypotenuse (South-West in Sim: [-n, 0, n] in Bevy: CCW viewed from [-n, 0, n]) ---
+        [-s,  s, -s],  [ s,  s,  s],  [ s, -s,  s],  [-s, -s, -s],  // 14 15 16 17
     ];
 
     #[rustfmt::skip]
@@ -593,12 +595,12 @@ fn create_chiral_mirror_mesh() -> Mesh {
         [0., 1., 0.],  [0., 1., 0.],  [0., 1., 0.],
         // Bottom (-Y)
         [0.,-1., 0.],  [0.,-1., 0.],  [0.,-1., 0.],
-        // Back wall 1 (-X)
-        [-1., 0., 0.], [-1., 0., 0.], [-1., 0., 0.], [-1., 0., 0.],
+        // Back wall 1 (+X)
+        [1., 0., 0.],  [1., 0., 0.],  [1., 0., 0.],  [1., 0., 0.],
         // Back wall 2 (-Z)
         [0., 0.,-1.],  [0., 0.,-1.],  [0., 0.,-1.],  [0., 0.,-1.],
-        // Hypotenuse ([+n, 0, n])
-        [n, 0., n],    [n, 0., n],    [n, 0., n],    [n, 0., n],
+        // Hypotenuse ([-n, 0, n])
+        [-n, 0., n],   [-n, 0., n],   [-n, 0., n],   [-n, 0., n],
     ];
 
     #[rustfmt::skip]
@@ -842,14 +844,18 @@ pub fn sync_bodies(
 // Laser beam sync & PFX
 // ---------------------------------------------------------------------------
 
-/// Every frame: despawn all old beam entities and render continuous solid laser lines
+/// Every frame: recalculate live laser raycasts and render continuous solid laser lines
 /// with glowing cores, outer sheaths, hit flares, and dynamic point lights.
 pub fn sync_lasers(
     mut commands: Commands,
-    game: Res<GameState>,
+    mut game: ResMut<GameState>,
     assets: Res<RenderAssets>,
     beams: Query<Entity, With<LaserBeamMarker>>,
 ) {
+    // 1. Live dynamic recalculation of laser raycasts from current world state every frame
+    // (active on frame 0, in the level editor, during solution playback, and during playtest)
+    game.engine.laser_state = crate::laser::cast_all_lasers(&game.engine.world);
+
     for entity in &beams {
         commands.entity(entity).despawn();
     }

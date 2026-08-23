@@ -43,9 +43,13 @@ pub fn test_level() -> World {
     // 3. Moveable Mirror 1 at (2, 5, 0) — identity "/" orientation
     world.spawn(BlockKind::Mirror, IVec3::new(2, 5, 0), unit_shape());
 
-    // 4. Fixed Mirror at (5, 4, 0) — identity "/" orientation: reflects +X → +Y
+    // 4. Fixed Mirror at (5, 4, 0) — ROT_Z_180 "/" orientation: reflects incoming +X → +Y
     let fixed_mirror_id = world.spawn(BlockKind::Mirror, IVec3::new(5, 4, 0), unit_shape());
-    world.body_mut(fixed_mirror_id).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
+    {
+        let body = world.body_mut(fixed_mirror_id).unwrap();
+        body.orientation = CubeRot::ROT_Z_180;
+        body.tags.set(TagKind::Fixed, TagValue::Unit);
+    }
 
     // 5. Moveable Mirror 2 at (3, 6, 0) — identity "/" orientation
     world.spawn(BlockKind::Mirror, IVec3::new(3, 6, 0), unit_shape());

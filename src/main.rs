@@ -404,18 +404,23 @@ fn update_victory_ui(
                 color.0 = Color::srgb(0.9, 0.95, 1.0);
             }
         } else if mode == editor::AppMode::Playtest {
-            match game.engine.outcome {
-                turn::GameOutcome::Won => {
-                    text.0 = "★ LEVEL COMPLETE! Laser Struck Goal Pyramid! ★\n[Esc] Return to Editor  |  [Z] Undo  |  [R] Reset".into();
-                    color.0 = Color::srgb(0.3, 1.0, 0.7);
-                }
-                turn::GameOutcome::Lost => {
-                    text.0 = "☠ GAME OVER! Laser Vaporized Player! ☠\n[Esc] Return to Editor  |  [Z] Undo  |  [R] Reset".into();
-                    color.0 = Color::srgb(1.0, 0.3, 0.3);
-                }
-                turn::GameOutcome::InProgress => {
-                    text.0 = "PLAYTEST MODE: Direct laser to Goal Pyramid\n[↑/↓/W/S] Move  |  [←/→/A/D] Turn  |  [Esc] Return to Editor  |  [Z] Undo  |  [R] Reset".into();
-                    color.0 = Color::srgb(0.9, 0.95, 1.0);
+            if let Some(err) = &game.engine.validation_error {
+                text.0 = format!("⚠ INVALID LEVEL: {}\n[Esc] Return to Editor", err);
+                color.0 = Color::srgb(1.0, 0.35, 0.35);
+            } else {
+                match game.engine.outcome {
+                    turn::GameOutcome::Won => {
+                        text.0 = "★ LEVEL COMPLETE! Laser Struck Goal Pyramid! ★\n[Esc] Return to Editor  |  [Z] Undo  |  [R] Reset".into();
+                        color.0 = Color::srgb(0.3, 1.0, 0.7);
+                    }
+                    turn::GameOutcome::Lost => {
+                        text.0 = "☠ GAME OVER! Laser Vaporized Player! ☠\n[Esc] Return to Editor  |  [Z] Undo  |  [R] Reset".into();
+                        color.0 = Color::srgb(1.0, 0.3, 0.3);
+                    }
+                    turn::GameOutcome::InProgress => {
+                        text.0 = "PLAYTEST MODE: Direct laser to Goal Pyramid\n[↑/↓/W/S] Move  |  [←/→/A/D] Turn  |  [Esc] Return to Editor  |  [Z] Undo  |  [R] Reset".into();
+                        color.0 = Color::srgb(0.9, 0.95, 1.0);
+                    }
                 }
             }
         }

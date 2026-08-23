@@ -156,7 +156,6 @@ pub enum PlayerMovementMode {
     /// - Left / Right: Turn 90° in place.
     /// - Up: Step forward in facing direction.
     /// - Down: Step backward opposite to facing direction.
-    #[default]
     Tank,
 
     /// Mode 2: Strafing (Direct Directional Move, No Turning).
@@ -171,11 +170,12 @@ pub enum PlayerMovementMode {
     /// Mode 4: Turn & Move (Backstep Without Turning on Opposite Direction).
     /// - Pressing forward or orthogonal directions turns to face that direction and steps.
     /// - Pressing the exact opposite direction (180°) steps backward without changing facing orientation.
+    #[default]
     TurnAndMoveBackstep,
 }
 
 /// Default movement mode constant for player bodies.
-pub const DEFAULT_PLAYER_MOVEMENT_MODE: PlayerMovementMode = PlayerMovementMode::Tank;
+pub const DEFAULT_PLAYER_MOVEMENT_MODE: PlayerMovementMode = PlayerMovementMode::TurnAndMoveBackstep;
 
 // ---------------------------------------------------------------------------
 // Per-Block Properties
@@ -347,12 +347,12 @@ impl BlockKind {
                 props.is_pushable = true;
                 props.movement_priority = 100;
 
-                // Single-sided reflective hypotenuse:
-                // Incoming +X (enters NegX face) -> reflects +Y (North)
-                props.set_face(BlockFace::NegX, FaceProperties::reflects_to(IVec3::new(0, 1, 0)));
-                // Incoming +Y (enters NegY face) -> reflects +X (East)
+                // Single-sided reflective hypotenuse (North-West apex, South-East facing "/"):
+                // 1. Incoming ray traveling +Y (North, enters NegY face) -> reflects +X (East)
                 props.set_face(BlockFace::NegY, FaceProperties::reflects_to(IVec3::new(1, 0, 0)));
-                // Back walls (PosX, PosY) and caps (PosZ, NegZ) remain FaceProperties::none() -> solid absorption.
+                // 2. Incoming ray traveling -X (West, enters PosX face) -> reflects -Y (South)
+                props.set_face(BlockFace::PosX, FaceProperties::reflects_to(IVec3::new(0, -1, 0)));
+                // Solid back walls (NegX West, PosY North) and caps (PosZ, NegZ) remain FaceProperties::none() -> solid absorption.
             }
         }
         props
@@ -400,21 +400,21 @@ mod tests {
         let mirror = BlockKind::Mirror.default_properties();
         let rot_id = CubeRot::IDENTITY;
 
-        // Front face reflection: +X incoming (from West) -> reflects +Y (North)
-        assert_eq!(
-            mirror.reflect_laser(IVec3::new(1, 0, 0), &rot_id),
-            Some(IVec3::new(0, 1, 0))
-        );
-
         // Front face reflection: +Y incoming (from South) -> reflects +X (East)
         assert_eq!(
             mirror.reflect_laser(IVec3::new(0, 1, 0), &rot_id),
             Some(IVec3::new(1, 0, 0))
         );
 
-        // Back face: -X incoming (from East hitting back) -> BLOCKED (None)
+        // Front face reflection: -X incoming (from East) -> reflects -Y (South)
         assert_eq!(
             mirror.reflect_laser(IVec3::new(-1, 0, 0), &rot_id),
+            Some(IVec3::new(0, -1, 0))
+        );
+
+        // Back face: +X incoming (from West hitting back) -> BLOCKED (None)
+        assert_eq!(
+            mirror.reflect_laser(IVec3::new(1, 0, 0), &rot_id),
             None
         );
 
@@ -438,30 +438,30 @@ mod tests {
     #[test]
     fn rotated_single_sided_mirror_transforms_correctly() {
         let mirror = BlockKind::Mirror.default_properties();
-        // Rotate 90° CCW about Z
-        let rot_ccw = CubeRot::ROT_Z_90;
+        // Rotate 270° CCW (90° CW) about Z: front face faces South-West
+        let rot = CubeRot::ROT_Z_270;
 
         // +Y incoming (from South) strikes front -> reflects -X (West)
         assert_eq!(
-            mirror.reflect_laser(IVec3::new(0, 1, 0), &rot_ccw),
+            mirror.reflect_laser(IVec3::new(0, 1, 0), &rot),
             Some(IVec3::new(-1, 0, 0))
         );
 
-        // -X incoming (from East) strikes front -> reflects +Y (North)
+        // +X incoming (from West) strikes front -> reflects -Y (South)
         assert_eq!(
-            mirror.reflect_laser(IVec3::new(-1, 0, 0), &rot_ccw),
-            Some(IVec3::new(0, 1, 0))
+            mirror.reflect_laser(IVec3::new(1, 0, 0), &rot),
+            Some(IVec3::new(0, -1, 0))
         );
 
-        // +X incoming strikes back wall -> BLOCKED
+        // -X incoming strikes back wall -> BLOCKED
         assert_eq!(
-            mirror.reflect_laser(IVec3::new(1, 0, 0), &rot_ccw),
+            mirror.reflect_laser(IVec3::new(-1, 0, 0), &rot),
             None
         );
 
         // -Y incoming strikes back wall -> BLOCKED
         assert_eq!(
-            mirror.reflect_laser(IVec3::new(0, -1, 0), &rot_ccw),
+            mirror.reflect_laser(IVec3::new(0, -1, 0), &rot),
             None
         );
     }
@@ -469,13 +469,13 @@ mod tests {
     #[test]
     fn planar_reflection_property_transform() {
         let mirror = BlockKind::Mirror.default_properties();
-        // Reflect across X=0 plane (normal = X)
+        // Reflect across X=0 plane (normal = X): South-East "/" becomes South-West "\"
         let reflected_mirror = mirror.reflect_across_plane(IVec3::X);
 
-        // Now incoming -X ray reflects to +Y
+        // Incoming +Y ray now reflects to -X (West)
         assert_eq!(
-            reflected_mirror.reflect_laser(IVec3::new(-1, 0, 0), &CubeRot::IDENTITY),
-            Some(IVec3::new(0, 1, 0))
+            reflected_mirror.reflect_laser(IVec3::new(0, 1, 0), &CubeRot::IDENTITY),
+            Some(IVec3::new(-1, 0, 0))
         );
     }
 }

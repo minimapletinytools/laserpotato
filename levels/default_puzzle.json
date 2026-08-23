@@ -4,8 +4,8 @@
     {
       "kind": "Player",
       "anchor": [
-        6,
-        2,
+        5,
+        1,
         0
       ],
       "orientation": {
@@ -95,13 +95,13 @@
       "orientation": {
         "mat": [
           [
-            1,
+            -1,
             0,
             0
           ],
           [
             0,
-            1,
+            -1,
             0
           ],
           [
@@ -1432,8 +1432,36 @@
     {
       "kind": "Mirror",
       "anchor": [
-        3,
-        5,
+        1,
+        1,
+        0
+      ],
+      "orientation": {
+        "mat": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "fixed": false
+    },
+    {
+      "kind": "Mirror",
+      "anchor": [
+        2,
+        1,
         0
       ],
       "orientation": {
@@ -1458,22 +1486,22 @@
       "fixed": false
     },
     {
-      "kind": "Wall",
+      "kind": "Mirror",
       "anchor": [
-        7,
-        5,
+        2,
+        -1,
         0
       ],
       "orientation": {
         "mat": [
           [
-            1,
             0,
+            -1,
             0
           ],
           [
-            0,
             1,
+            0,
             0
           ],
           [
@@ -1483,13 +1511,13 @@
           ]
         ]
       },
-      "fixed": true
+      "fixed": false
     },
     {
       "kind": "Mirror",
       "anchor": [
         3,
-        1,
+        -1,
         0
       ],
       "orientation": {
@@ -1518,6 +1546,90 @@
       "anchor": [
         3,
         2,
+        0
+      ],
+      "orientation": {
+        "mat": [
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            -1,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "fixed": false
+    },
+    {
+      "kind": "Mirror",
+      "anchor": [
+        0,
+        2,
+        0
+      ],
+      "orientation": {
+        "mat": [
+          [
+            0,
+            -1,
+            0
+          ],
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "fixed": false
+    },
+    {
+      "kind": "Mirror",
+      "anchor": [
+        0,
+        4,
+        0
+      ],
+      "orientation": {
+        "mat": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "fixed": false
+    },
+    {
+      "kind": "Mirror",
+      "anchor": [
+        5,
+        6,
         0
       ],
       "orientation": {
