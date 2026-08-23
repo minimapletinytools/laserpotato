@@ -21,12 +21,14 @@ pub enum BlockKind {
     Mirror,
     /// Emits a laser beam in its forward (+Y local) direction.
     LaserSource,
+    /// Target goal pyramid. When struck by a laser beam, the puzzle level is completed.
+    Goal,
 }
 
 impl BlockKind {
-    /// Whether this block can be pushed by another block's movement.
+    /// Whether this block kind is inherently pushable when untagged.
     pub fn is_pushable(self) -> bool {
-        matches!(self, Self::Pushable | Self::Mirror)
+        matches!(self, Self::Pushable | Self::Mirror | Self::LaserSource)
     }
 
     /// Whether this block prevents other blocks from entering its cells.
@@ -52,6 +54,7 @@ impl fmt::Display for BlockKind {
             Self::Pushable => write!(f, "Pushable"),
             Self::Mirror => write!(f, "Mirror"),
             Self::LaserSource => write!(f, "LaserSource"),
+            Self::Goal => write!(f, "Goal"),
         }
     }
 }

@@ -7,6 +7,7 @@
 use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology};
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
 use crate::block_types::BlockKind;
 use crate::sim::{BodyId, CubeRot};
@@ -40,21 +41,36 @@ pub struct RenderAssets {
     pub cube_mesh: Handle<Mesh>,
     pub player_mesh: Handle<Mesh>,
     pub mirror_mesh: Handle<Mesh>,
+    pub pyramid_mesh: Handle<Mesh>,
     pub indicator_mesh: Handle<Mesh>,
     pub laser_core_mesh: Handle<Mesh>,
     pub laser_glow_mesh: Handle<Mesh>,
     pub laser_impact_mesh: Handle<Mesh>,
 
+    // Player
     pub player_mat: Handle<StandardMaterial>,
     pub player_indicator_mat: Handle<StandardMaterial>,
-    pub wall_mat: Handle<StandardMaterial>,
-    pub pushable_mat: Handle<StandardMaterial>,
-    pub mirror_mat: Handle<StandardMaterial>,
-    pub laser_source_mat: Handle<StandardMaterial>,
+
+    // Moveable (vibrant, saturated, smooth)
+    pub moveable_pushable_mat: Handle<StandardMaterial>,
+    pub moveable_mirror_mat: Handle<StandardMaterial>,
+    pub moveable_laser_mat: Handle<StandardMaterial>,
+
+    // Stationary / Fixed (desaturated, darker, with stone grid texture)
+    pub fixed_wall_mat: Handle<StandardMaterial>,
+    pub fixed_pushable_mat: Handle<StandardMaterial>,
+    pub fixed_mirror_mat: Handle<StandardMaterial>,
+    pub fixed_laser_mat: Handle<StandardMaterial>,
+
+    // Laser Source Indicator & Beams
     pub laser_indicator_mat: Handle<StandardMaterial>,
     pub laser_core_mat: Handle<StandardMaterial>,
     pub laser_glow_mat: Handle<StandardMaterial>,
     pub laser_impact_mat: Handle<StandardMaterial>,
+
+    // Goal
+    pub goal_mat: Handle<StandardMaterial>,
+    pub goal_won_mat: Handle<StandardMaterial>,
 }
 
 /// Startup system — create shared meshes and materials.
@@ -62,80 +78,106 @@ pub fn setup_render_assets(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut images: ResMut<Assets<Image>>,
 ) {
     let cube = meshes.add(Cuboid::new(0.9, 0.9, 0.9));
     let player = meshes.add(create_dodecahedron_mesh());
     let mirror = meshes.add(create_mirror_mesh());
+    let pyramid = meshes.add(create_pyramid_mesh());
     let indicator = meshes.add(Cuboid::new(0.3, 0.3, 0.15));
 
     // Continuous cylinder meshes for lasers:
-    // Core is intense thin ray, glow is outer translucent beam
     let laser_core_mesh = meshes.add(Cylinder::new(0.04, 1.0));
     let laser_glow_mesh = meshes.add(Cylinder::new(0.12, 1.0));
     let laser_impact_mesh = meshes.add(Sphere::new(0.12));
+
+    // Procedural texture for stationary/fixed blocks
+    let stone_texture = images.add(create_fixed_block_texture());
 
     commands.insert_resource(RenderAssets {
         cube_mesh: cube,
         player_mesh: player,
         mirror_mesh: mirror,
+        pyramid_mesh: pyramid,
         indicator_mesh: indicator,
         laser_core_mesh,
         laser_glow_mesh,
         laser_impact_mesh,
 
-        // Player body — blue
+        // Player (vibrant blue dodecahedron)
         player_mat: materials.add(StandardMaterial {
-            base_color: Color::srgb(0.2, 0.5, 1.0),
+            base_color: Color::srgb(0.25, 0.6, 1.0),
+            perceptual_roughness: 0.2,
+            double_sided: true,
             ..default()
         }),
-        // Player facing indicator — bright white
         player_indicator_mat: materials.add(StandardMaterial {
             base_color: Color::srgb(0.95, 0.95, 1.0),
             emissive: LinearRgba::new(0.6, 0.6, 1.0, 1.0),
             ..default()
         }),
 
-        // Walls — dark gray
-        wall_mat: materials.add(StandardMaterial {
-            base_color: Color::srgb(0.3, 0.3, 0.3),
+        // Moveable Blocks (Vibrant, Saturated, Smooth finish)
+        moveable_pushable_mat: materials.add(StandardMaterial {
+            base_color: Color::srgb(1.0, 0.65, 0.12), // Bright golden orange
+            perceptual_roughness: 0.3,
             ..default()
         }),
-
-        // Pushable — orange
-        pushable_mat: materials.add(StandardMaterial {
-            base_color: Color::srgb(0.95, 0.65, 0.15),
-            ..default()
-        }),
-
-        // Mirror — silver metallic
-        mirror_mat: materials.add(StandardMaterial {
-            base_color: Color::srgb(0.8, 0.85, 0.95),
-            metallic: 0.9,
-            perceptual_roughness: 0.1,
+        moveable_mirror_mat: materials.add(StandardMaterial {
+            base_color: Color::srgb(0.92, 0.96, 1.0), // Polished bright chrome
+            metallic: 0.95,
+            perceptual_roughness: 0.05,
             double_sided: true,
             ..default()
         }),
-
-        // Laser source body — dark red
-        laser_source_mat: materials.add(StandardMaterial {
-            base_color: Color::srgb(0.6, 0.1, 0.1),
+        moveable_laser_mat: materials.add(StandardMaterial {
+            base_color: Color::srgb(0.9, 0.15, 0.15), // Bright crimson
+            perceptual_roughness: 0.3,
             ..default()
         }),
-        // Laser source emission indicator — bright red/orange glow
+
+        // Stationary / Fixed Blocks (Desaturated, darker, stone texture)
+        fixed_wall_mat: materials.add(StandardMaterial {
+            base_color: Color::srgb(0.45, 0.45, 0.48),
+            base_color_texture: Some(stone_texture.clone()),
+            perceptual_roughness: 0.8,
+            ..default()
+        }),
+        fixed_pushable_mat: materials.add(StandardMaterial {
+            base_color: Color::srgb(0.48, 0.44, 0.4),
+            base_color_texture: Some(stone_texture.clone()),
+            perceptual_roughness: 0.7,
+            ..default()
+        }),
+        fixed_mirror_mat: materials.add(StandardMaterial {
+            base_color: Color::srgb(0.7, 0.72, 0.78), // Desaturated gunmetal mirror
+            metallic: 0.85,
+            perceptual_roughness: 0.15,
+            double_sided: true,
+            ..default()
+        }),
+        fixed_laser_mat: materials.add(StandardMaterial {
+            base_color: Color::srgb(0.5, 0.3, 0.3),
+            base_color_texture: Some(stone_texture.clone()),
+            perceptual_roughness: 0.7,
+            ..default()
+        }),
+
+        // Laser source emission indicator
         laser_indicator_mat: materials.add(StandardMaterial {
             base_color: Color::srgb(1.0, 0.3, 0.1),
             emissive: LinearRgba::new(4.0, 0.8, 0.2, 1.0),
             ..default()
         }),
 
-        // Solid continuous laser core — high emissive intense beam
+        // Solid continuous laser core
         laser_core_mat: materials.add(StandardMaterial {
             base_color: Color::srgb(1.0, 0.95, 0.9),
             emissive: LinearRgba::new(25.0, 10.0, 4.0, 1.0),
             ..default()
         }),
 
-        // Laser outer glow sheath — translucent glowing orange
+        // Laser outer glow sheath
         laser_glow_mat: materials.add(StandardMaterial {
             base_color: Color::srgba(1.0, 0.3, 0.05, 0.35),
             emissive: LinearRgba::new(6.0, 1.5, 0.3, 1.0),
@@ -149,42 +191,169 @@ pub fn setup_render_assets(
             emissive: LinearRgba::new(30.0, 12.0, 4.0, 1.0),
             ..default()
         }),
+
+        // Goal Pyramid: default golden crystal
+        goal_mat: materials.add(StandardMaterial {
+            base_color: Color::srgb(1.0, 0.8, 0.15),
+            metallic: 0.7,
+            perceptual_roughness: 0.2,
+            emissive: LinearRgba::new(0.4, 0.3, 0.05, 1.0),
+            ..default()
+        }),
+
+        // Goal Pyramid: triumphant radiant victory glow
+        goal_won_mat: materials.add(StandardMaterial {
+            base_color: Color::srgb(0.3, 1.0, 0.8),
+            metallic: 0.8,
+            perceptual_roughness: 0.1,
+            emissive: LinearRgba::new(20.0, 15.0, 3.0, 1.0),
+            ..default()
+        }),
     });
 }
 
 // ---------------------------------------------------------------------------
-// Custom meshes
+// Procedural Textures & Custom Meshes
 // ---------------------------------------------------------------------------
+
+/// Create a procedural stone grid / masonry texture for stationary blocks.
+fn create_fixed_block_texture() -> Image {
+    let width = 64;
+    let height = 64;
+    let mut data = Vec::with_capacity((width * height * 4) as usize);
+
+    for y in 0..height {
+        for x in 0..width {
+            let is_border = x <= 2 || x >= width - 3 || y <= 2 || y >= height - 3;
+            let is_groove = (x >= 30 && x <= 33) || (y >= 30 && y <= 33);
+            let noise = ((x * 13 + y * 37) % 23) as u8;
+
+            let (r, g, b) = if is_border {
+                (45, 45, 50)
+            } else if is_groove {
+                (65, 65, 72)
+            } else {
+                let base = 145 + noise;
+                (base, base, base + 4)
+            };
+
+            data.push(r);
+            data.push(g);
+            data.push(b);
+            data.push(255);
+        }
+    }
+
+    Image::new(
+        Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    )
+}
+
+/// Construct a pyramid mesh for the Goal block.
+/// All faces are wound Counter-Clockwise (CCW) facing outward.
+fn create_pyramid_mesh() -> Mesh {
+    let s: f32 = 0.45;
+    let apex_y: f32 = 0.35; // Apex height in Bevy local coordinates
+
+    // 4 Sloping sides + base square cap (strictly CCW viewed from outside)
+    #[rustfmt::skip]
+    let positions: Vec<[f32; 3]> = vec![
+        // North face (facing -Z in Bevy: bottom-right -> bottom-left -> apex)
+        [ s, -s, -s],  [-s, -s, -s],  [0.0, apex_y, 0.0], // 0 1 2
+
+        // East face (facing +X in Bevy: bottom-right -> bottom-left -> apex)
+        [ s, -s,  s],  [ s, -s, -s],  [0.0, apex_y, 0.0], // 3 4 5
+
+        // South face (facing +Z in Bevy: bottom-right -> bottom-left -> apex)
+        [-s, -s,  s],  [ s, -s,  s],  [0.0, apex_y, 0.0], // 6 7 8
+
+        // West face (facing -X in Bevy: bottom-right -> bottom-left -> apex)
+        [-s, -s, -s],  [-s, -s,  s],  [0.0, apex_y, 0.0], // 9 10 11
+
+        // Bottom square cap (facing -Y: CCW viewed from below)
+        [-s, -s, -s],  [-s, -s,  s],  [ s, -s,  s],  [ s, -s, -s], // 12 13 14 15
+    ];
+
+    let h = apex_y + s; // Height from base to apex
+    let len = (s * s + h * h).sqrt();
+    let ny = s / len;
+    let nside = h / len;
+
+    #[rustfmt::skip]
+    let normals: Vec<[f32; 3]> = vec![
+        // North (-Z)
+        [0.0, ny, -nside], [0.0, ny, -nside], [0.0, ny, -nside],
+        // East (+X)
+        [nside, ny, 0.0],  [nside, ny, 0.0],  [nside, ny, 0.0],
+        // South (+Z)
+        [0.0, ny, nside],  [0.0, ny, nside],  [0.0, ny, nside],
+        // West (-X)
+        [-nside, ny, 0.0], [-nside, ny, 0.0], [-nside, ny, 0.0],
+        // Bottom (-Y)
+        [0.0, -1.0, 0.0], [0.0, -1.0, 0.0], [0.0, -1.0, 0.0], [0.0, -1.0, 0.0],
+    ];
+
+    #[rustfmt::skip]
+    let uvs: Vec<[f32; 2]> = vec![
+        // North
+        [1.0, 0.0], [0.0, 0.0], [0.5, 1.0],
+        // East
+        [1.0, 0.0], [0.0, 0.0], [0.5, 1.0],
+        // South
+        [1.0, 0.0], [0.0, 0.0], [0.5, 1.0],
+        // West
+        [1.0, 0.0], [0.0, 0.0], [0.5, 1.0],
+        // Bottom
+        [0.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, 0.0],
+    ];
+
+    #[rustfmt::skip]
+    let indices: Vec<u32> = vec![
+        0, 1, 2,                 // North
+        3, 4, 5,                 // East
+        6, 7, 8,                 // South
+        9, 10, 11,               // West
+        12, 13, 14,  12, 14, 15, // Bottom
+    ];
+
+    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+        .with_inserted_indices(Indices::U32(indices))
+}
 
 /// Construct a regular dodecahedron mesh for the player character.
 fn create_dodecahedron_mesh() -> Mesh {
-    let phi = (1.0 + 5.0_f32.sqrt()) / 2.0; // ~1.618034
-    let inv_phi = 1.0 / phi;                // ~0.618034
-    let s = 0.25; // Scale so bounding radius is ~0.43 (fits nicely in 0.9 grid unit)
+    let phi = (1.0 + 5.0_f32.sqrt()) / 2.0;
+    let inv_phi = 1.0 / phi;
+    let s = 0.25;
 
     let a = s;
     let b = s * inv_phi;
     let c = s * phi;
 
-    // 20 vertices of regular dodecahedron
     let verts = [
-        // 8 cube vertices (±a, ±a, ±a)
         Vec3::new(-a, -a, -a), Vec3::new(-a, -a,  a),
         Vec3::new(-a,  a, -a), Vec3::new(-a,  a,  a),
         Vec3::new( a, -a, -a), Vec3::new( a, -a,  a),
         Vec3::new( a,  a, -a), Vec3::new( a,  a,  a),
-        // 4 YZ plane (0, ±b, ±c)
         Vec3::new(0.0, -b, -c), Vec3::new(0.0, -b,  c),
         Vec3::new(0.0,  b, -c), Vec3::new(0.0,  b,  c),
-        // 4 XY plane (±b, ±c, 0)
         Vec3::new(-b, -c, 0.0), Vec3::new(-b,  c, 0.0),
         Vec3::new( b, -c, 0.0), Vec3::new( b,  c, 0.0),
-        // 4 XZ plane (±c, 0, ±b)
         Vec3::new(-c, 0.0, -b), Vec3::new(-c, 0.0,  b),
         Vec3::new( c, 0.0, -b), Vec3::new( c, 0.0,  b),
     ];
 
-    // 12 face normals (pointing from origin to face centers)
     let p = phi;
     let face_normals = [
         Vec3::new( 0.0,  1.0,  p), Vec3::new( 0.0,  1.0, -p),
@@ -202,22 +371,16 @@ fn create_dodecahedron_mesh() -> Mesh {
 
     for n in face_normals {
         let norm = n.normalize();
-
-        // Find the 5 vertices that belong to this face (highest dot product with normal)
         let mut face_verts: Vec<Vec3> = verts.iter().copied().collect();
         face_verts.sort_by(|v1, v2| {
             v2.dot(norm).partial_cmp(&v1.dot(norm)).unwrap()
         });
         let mut pentagon: Vec<Vec3> = face_verts.into_iter().take(5).collect();
 
-        // Calculate face center
         let center: Vec3 = pentagon.iter().sum::<Vec3>() / 5.0;
-
-        // Build tangent and bitangent in the face plane
         let tangent = (pentagon[0] - center).normalize();
         let bitangent = norm.cross(tangent);
 
-        // Sort pentagon vertices CCW around the outward normal
         pentagon.sort_by(|v1, v2| {
             let d1 = *v1 - center;
             let d2 = *v2 - center;
@@ -233,7 +396,6 @@ fn create_dodecahedron_mesh() -> Mesh {
             uvs.push([0.5, 0.5]);
         }
 
-        // Triangulate pentagon (0, 1, 2), (0, 2, 3), (0, 3, 4)
         indices.extend_from_slice(&[
             base_idx, base_idx + 1, base_idx + 2,
             base_idx, base_idx + 2, base_idx + 3,
@@ -249,53 +411,64 @@ fn create_dodecahedron_mesh() -> Mesh {
 }
 
 /// Right-triangular prism for the mirror.
-///
-/// In sim coordinates, the "/" reflective surface runs along the diagonal
-/// from `(-s, -s)` to `(+s, +s)` in the XY plane.
-/// Rotated 180° in sim Z so that the reflective face normal points in (+X, -Y) in sim
-/// (facing +X and +Z in Bevy).
+/// All faces are wound Counter-Clockwise (CCW) facing outward.
 fn create_mirror_mesh() -> Mesh {
     let s: f32 = 0.45;
-    let n: f32 = std::f32::consts::FRAC_1_SQRT_2; // 1/√2
+    let n: f32 = std::f32::consts::FRAC_1_SQRT_2;
 
-    // Vertices mapped from sim (x, y, z) -> Bevy (x, z, -y)
     #[rustfmt::skip]
     let positions: Vec<[f32; 3]> = vec![
-        // --- top cap (sim z = +s -> Bevy y = +s, normal +Y) ---
-        [-s,  s,  s],  [-s,  s, -s],  [ s,  s, -s],   // 0 1 2
-        // --- bottom cap (sim z = -s -> Bevy y = -s, normal -Y) ---
-        [-s, -s,  s],  [ s, -s, -s],  [-s, -s, -s],   // 3 4 5
-        // --- back wall 1 (sim y = +s -> Bevy z = -s, normal -Z) ---
-        [-s, -s, -s],  [ s, -s, -s],  [ s,  s, -s],  [-s,  s, -s],  // 6 7 8 9
-        // --- back wall 2 (sim x = -s -> Bevy x = -s, normal -X) ---
-        [-s, -s,  s],  [-s, -s, -s],  [-s,  s, -s],  [-s,  s,  s],  // 10 11 12 13
-        // --- hypotenuse "/" (normal facing +X, +Z in Bevy) ---
+        // --- Top cap (+Y: CCW when viewed from above) ---
+        [-s,  s,  s],  [ s,  s, -s],  [-s,  s, -s],   // 0 1 2
+
+        // --- Bottom cap (-Y: CCW when viewed from below) ---
+        [-s, -s,  s],  [-s, -s, -s],  [ s, -s, -s],   // 3 4 5
+
+        // --- Back wall 1 (-Z: CCW when viewed from -Z) ---
+        [-s, -s, -s],  [-s,  s, -s],  [ s,  s, -s],  [ s, -s, -s],  // 6 7 8 9
+
+        // --- Back wall 2 (-X: CCW when viewed from -X) ---
+        [-s, -s,  s],  [-s,  s,  s],  [-s,  s, -s],  [-s, -s, -s],  // 10 11 12 13
+
+        // --- Hypotenuse (+X, +Z: CCW when viewed from +X, +Z) ---
         [-s, -s,  s],  [ s, -s, -s],  [ s,  s, -s],  [-s,  s,  s],  // 14 15 16 17
     ];
 
     #[rustfmt::skip]
     let normals: Vec<[f32; 3]> = vec![
-        // top
+        // Top (+Y)
         [0., 1., 0.],  [0., 1., 0.],  [0., 1., 0.],
-        // bottom
+        // Bottom (-Y)
         [0.,-1., 0.],  [0.,-1., 0.],  [0.,-1., 0.],
-        // back wall 1 (-Z)
+        // Back wall 1 (-Z)
         [0., 0.,-1.],  [0., 0.,-1.],  [0., 0.,-1.],  [0., 0.,-1.],
-        // back wall 2 (-X)
+        // Back wall 2 (-X)
         [-1., 0., 0.], [-1., 0., 0.], [-1., 0., 0.], [-1., 0., 0.],
-        // hypotenuse (+X, +Z in Bevy)
+        // Hypotenuse (+X, +Z)
         [n, 0., n],    [n, 0., n],    [n, 0., n],    [n, 0., n],
     ];
 
-    let uvs: Vec<[f32; 2]> = vec![[0.0, 0.0]; positions.len()];
+    #[rustfmt::skip]
+    let uvs: Vec<[f32; 2]> = vec![
+        // Top
+        [0.0, 1.0], [1.0, 0.0], [0.0, 0.0],
+        // Bottom
+        [0.0, 1.0], [0.0, 0.0], [1.0, 0.0],
+        // Back wall 1
+        [0.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, 0.0],
+        // Back wall 2
+        [0.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, 0.0],
+        // Hypotenuse
+        [0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0],
+    ];
 
     #[rustfmt::skip]
     let indices: Vec<u32> = vec![
-        0,  1,  2,            // top
-        3,  4,  5,            // bottom
-        6,  7,  8,   6, 8, 9, // back wall 1
-        10, 11, 12, 10,12,13, // back wall 2
-        14, 15, 16, 14,16,17, // hypotenuse
+        0,  1,  2,              // Top cap
+        3,  4,  5,              // Bottom cap
+        6,  7,  8,   6,  8,  9, // Back wall 1
+        10, 11, 12,  10, 12, 13, // Back wall 2
+        14, 15, 16,  14, 16, 17, // Hypotenuse
     ];
 
     Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
@@ -309,24 +482,20 @@ fn create_mirror_mesh() -> Mesh {
 // Coordinate helpers
 // ---------------------------------------------------------------------------
 
-/// Convert sim integer coordinates (Z-up, Y-forward, X-right) to Bevy coordinates (Y-up, -Z-forward, X-right).
 pub fn sim_to_bevy(pos: glam::IVec3) -> Vec3 {
     Vec3::new(pos.x as f32, pos.z as f32, -pos.y as f32)
 }
 
-/// Convert sim floating-point coordinates to Bevy coordinates.
 pub fn sim_to_bevy_f32(pos: Vec3) -> Vec3 {
     Vec3::new(pos.x, pos.z, -pos.y)
 }
 
-/// Convert a sim [`CubeRot`] (Z-up frame) to a Bevy [`Quat`] (Y-up frame).
-/// Uses similarity transform `R_bevy = R * M * R^T` where `R` is the 90° rotation around X.
 fn cube_rot_to_quat(rot: &CubeRot) -> Quat {
     let m = rot.mat();
     let bevy_mat = Mat3::from_cols_array(&[
-        m[0][0] as f32,  m[2][0] as f32, -m[1][0] as f32, // col 0
-        m[0][2] as f32,  m[2][2] as f32, -m[1][2] as f32, // col 1
-       -m[0][1] as f32, -m[2][1] as f32,  m[1][1] as f32, // col 2
+        m[0][0] as f32,  m[2][0] as f32, -m[1][0] as f32,
+        m[0][2] as f32,  m[2][2] as f32, -m[1][2] as f32,
+       -m[0][1] as f32, -m[2][1] as f32,  m[1][1] as f32,
     ]);
     Quat::from_mat3(&bevy_mat)
 }
@@ -336,22 +505,32 @@ fn cube_rot_to_quat(rot: &CubeRot) -> Quat {
 // ---------------------------------------------------------------------------
 
 /// Every frame: update existing entity transforms, spawn new bodies, despawn
-/// removed bodies.
+/// removed bodies, and assign materials based on moveable vs fixed status.
 pub fn sync_bodies(
     mut commands: Commands,
     game: Res<GameState>,
     assets: Res<RenderAssets>,
-    mut query: Query<(Entity, &SimBodyLink, &mut Transform)>,
+    mut query: Query<(Entity, &SimBodyLink, &mut Transform, &mut MeshMaterial3d<StandardMaterial>)>,
 ) {
     let world = &game.engine.world;
     let mut seen = std::collections::HashSet::new();
     let mut to_despawn = Vec::new();
 
-    // Update existing entities (position + rotation).
-    for (entity, link, mut transform) in &mut query {
+    // Update existing entities (position, rotation, and dynamic goal material).
+    for (entity, link, mut transform, mut mat_handle) in &mut query {
         if let Some(body) = world.body(link.0) {
             transform.translation = sim_to_bevy(body.anchor);
             transform.rotation = cube_rot_to_quat(&body.orientation);
+
+            // Update goal block material if level won state changes
+            if body.kind == BlockKind::Goal {
+                mat_handle.0 = if game.engine.is_won {
+                    assets.goal_won_mat.clone()
+                } else {
+                    assets.goal_mat.clone()
+                };
+            }
+
             seen.insert(link.0);
         } else {
             to_despawn.push(entity);
@@ -369,12 +548,43 @@ pub fn sync_bodies(
             continue;
         }
 
+        let is_moveable = body.is_pushable();
+
         let (mesh, material) = match body.kind {
             BlockKind::Player => (assets.player_mesh.clone(), assets.player_mat.clone()),
-            BlockKind::Wall => (assets.cube_mesh.clone(), assets.wall_mat.clone()),
-            BlockKind::Pushable => (assets.cube_mesh.clone(), assets.pushable_mat.clone()),
-            BlockKind::Mirror => (assets.mirror_mesh.clone(), assets.mirror_mat.clone()),
-            BlockKind::LaserSource => (assets.cube_mesh.clone(), assets.laser_source_mat.clone()),
+            BlockKind::Goal => {
+                let mat = if game.engine.is_won {
+                    assets.goal_won_mat.clone()
+                } else {
+                    assets.goal_mat.clone()
+                };
+                (assets.pyramid_mesh.clone(), mat)
+            }
+            BlockKind::Wall => (assets.cube_mesh.clone(), assets.fixed_wall_mat.clone()),
+            BlockKind::Pushable => {
+                let mat = if is_moveable {
+                    assets.moveable_pushable_mat.clone()
+                } else {
+                    assets.fixed_pushable_mat.clone()
+                };
+                (assets.cube_mesh.clone(), mat)
+            }
+            BlockKind::Mirror => {
+                let mat = if is_moveable {
+                    assets.moveable_mirror_mat.clone()
+                } else {
+                    assets.fixed_mirror_mat.clone()
+                };
+                (assets.mirror_mesh.clone(), mat)
+            }
+            BlockKind::LaserSource => {
+                let mat = if is_moveable {
+                    assets.moveable_laser_mat.clone()
+                } else {
+                    assets.fixed_laser_mat.clone()
+                };
+                (assets.cube_mesh.clone(), mat)
+            }
         };
 
         let transform = Transform::from_translation(sim_to_bevy(body.anchor))
@@ -391,7 +601,6 @@ pub fn sync_bodies(
         match body.kind {
             BlockKind::Player => {
                 entity_cmds.with_children(|parent| {
-                    // "Nose" on the front face (-Z in Bevy local = +Y in sim).
                     parent.spawn((
                         Mesh3d(assets.indicator_mesh.clone()),
                         MeshMaterial3d(assets.player_indicator_mat.clone()),
@@ -401,7 +610,6 @@ pub fn sync_bodies(
             }
             BlockKind::LaserSource => {
                 entity_cmds.with_children(|parent| {
-                    // Glowing dot on the face the laser emits from (-Z in Bevy local = +Y in sim).
                     parent.spawn((
                         Mesh3d(assets.indicator_mesh.clone()),
                         MeshMaterial3d(assets.laser_indicator_mat.clone()),
@@ -426,7 +634,6 @@ pub fn sync_lasers(
     assets: Res<RenderAssets>,
     beams: Query<Entity, With<LaserBeamMarker>>,
 ) {
-    // Despawn previous beams & lights.
     for entity in &beams {
         commands.entity(entity).despawn();
     }
@@ -484,7 +691,7 @@ pub fn sync_lasers(
             },
         ));
 
-        // 2. Outer glowing translucent sheath (with animated pulse)
+        // 2. Outer glowing translucent sheath
         let glow_scale = Vec3::new(1.0, length, 1.0);
         commands.spawn((
             LaserBeamMarker,
@@ -556,7 +763,7 @@ pub fn draw_coordinate_gizmo(mut gizmos: Gizmos) {
     }
 
     // Bottom-left origin in Bevy coordinates (-X, +Z)
-    let origin = Vec3::new(-2.2, 0.2, 1.8);
+    let origin = Vec3::new(-2.2, 0.2, 2.2);
     let len = 1.0;
 
     // +X (Right in Sim = +X in Bevy) - Red

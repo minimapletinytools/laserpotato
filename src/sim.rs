@@ -224,6 +224,20 @@ impl Body {
             .map(|&offset| self.anchor + self.orientation.apply(offset))
             .collect()
     }
+
+    /// Whether this specific body instance can be pushed.
+    /// TagKind::Fixed explicitly disables pushing.
+    /// TagKind::Pushable explicitly enables pushing.
+    /// Otherwise falls back to the default pushability of its BlockKind.
+    pub fn is_pushable(&self) -> bool {
+        if self.tags.has(TagKind::Fixed) {
+            return false;
+        }
+        if self.tags.has(TagKind::Pushable) {
+            return true;
+        }
+        self.kind.is_pushable()
+    }
 }
 
 /// Spatial occupancy index over [`Body`] cells.
