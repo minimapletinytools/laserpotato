@@ -1,0 +1,10 @@
+
+-get grid numbers to show correctly
+-do some research into building solve
+    -grouping moves?
+    -identify certain types of "moves"
+    -heuristic, is that actually helpful?
+    -identify unwinnable states
+    -identify uintuitive moves
+        -walk into laser path which will simultaneously disable the laser (miht be solver order dependent...)
+
