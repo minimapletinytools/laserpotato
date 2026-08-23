@@ -49,6 +49,7 @@ pub struct RenderAssets {
 
     // Player
     pub player_mat: Handle<StandardMaterial>,
+    pub player_burnt_mat: Handle<StandardMaterial>,
     pub player_indicator_mat: Handle<StandardMaterial>,
 
     // Moveable (vibrant, saturated, smooth)
@@ -108,6 +109,14 @@ pub fn setup_render_assets(
         player_mat: materials.add(StandardMaterial {
             base_color: Color::srgb(0.25, 0.6, 1.0),
             perceptual_roughness: 0.2,
+            double_sided: true,
+            ..default()
+        }),
+        // Player defeated/burnt material (charred dark red with glowing embers)
+        player_burnt_mat: materials.add(StandardMaterial {
+            base_color: Color::srgb(0.2, 0.05, 0.05),
+            emissive: LinearRgba::new(5.0, 0.8, 0.1, 1.0),
+            perceptual_roughness: 0.8,
             double_sided: true,
             ..default()
         }),
@@ -522,12 +531,18 @@ pub fn sync_bodies(
             transform.translation = sim_to_bevy(body.anchor);
             transform.rotation = cube_rot_to_quat(&body.orientation);
 
-            // Update goal block material if level won state changes
+            // Update dynamic materials based on win / loss outcome
             if body.kind == BlockKind::Goal {
-                mat_handle.0 = if game.engine.is_won {
+                mat_handle.0 = if game.engine.is_won() {
                     assets.goal_won_mat.clone()
                 } else {
                     assets.goal_mat.clone()
+                };
+            } else if body.kind == BlockKind::Player {
+                mat_handle.0 = if game.engine.is_lost() {
+                    assets.player_burnt_mat.clone()
+                } else {
+                    assets.player_mat.clone()
                 };
             }
 
@@ -551,9 +566,16 @@ pub fn sync_bodies(
         let is_moveable = body.is_pushable();
 
         let (mesh, material) = match body.kind {
-            BlockKind::Player => (assets.player_mesh.clone(), assets.player_mat.clone()),
+            BlockKind::Player => {
+                let mat = if game.engine.is_lost() {
+                    assets.player_burnt_mat.clone()
+                } else {
+                    assets.player_mat.clone()
+                };
+                (assets.player_mesh.clone(), mat)
+            }
             BlockKind::Goal => {
-                let mat = if game.engine.is_won {
+                let mat = if game.engine.is_won() {
                     assets.goal_won_mat.clone()
                 } else {
                     assets.goal_mat.clone()

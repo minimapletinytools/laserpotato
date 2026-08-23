@@ -48,6 +48,23 @@ pub enum PlayerAction {
     Reset,
 }
 
+/// Overall outcome / state of the game session.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum GameOutcome {
+    #[default]
+    InProgress,
+    /// Player won (laser struck Goal pyramid).
+    Won,
+    /// Player lost (laser struck the Player character).
+    Lost,
+}
+
+impl GameOutcome {
+    pub fn is_game_over(self) -> bool {
+        self != Self::InProgress
+    }
+}
+
 /// Result of attempting to apply a [`PlayerAction`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TurnResult {
@@ -59,6 +76,8 @@ pub enum TurnResult {
     WasReset,
     /// No player body exists in the world.
     NoPlayer,
+    /// Action was rejected because the game is already in a Win/Loss state (Undo & Reset are still allowed).
+    GameOver,
 }
 
 // ---------------------------------------------------------------------------
@@ -66,14 +85,14 @@ pub enum TurnResult {
 // ---------------------------------------------------------------------------
 
 /// Owns the simulation state, the undo stack, the current laser state,
-/// and level completion status.
+/// and game outcome (Win / Lose / InProgress).
 pub struct TurnEngine {
     /// Current simulation state — the source of truth.
     pub world: World,
     /// Laser segments computed after the most recent turn.
     pub laser_state: Vec<LaserSegment>,
-    /// Whether the level goal condition has been satisfied (laser hits Goal block).
-    pub is_won: bool,
+    /// Current game outcome.
+    pub outcome: GameOutcome,
     /// Stack of previous world snapshots for undo.
     undo_stack: Vec<World>,
     /// The world as it was when the puzzle started (for reset).
@@ -83,15 +102,25 @@ pub struct TurnEngine {
 impl TurnEngine {
     pub fn new(world: World) -> Self {
         let laser_state = laser::cast_all_lasers(&world);
-        let is_won = check_is_won(&world, &laser_state);
+        let outcome = evaluate_outcome(&world, &laser_state);
         let initial_world = world.clone();
         Self {
             world,
             laser_state,
-            is_won,
+            outcome,
             undo_stack: Vec::new(),
             initial_world,
         }
+    }
+
+    /// Convenience helper for checking if the player has won.
+    pub fn is_won(&self) -> bool {
+        self.outcome == GameOutcome::Won
+    }
+
+    /// Convenience helper for checking if the player has lost.
+    pub fn is_lost(&self) -> bool {
+        self.outcome == GameOutcome::Lost
     }
 
     /// Apply a player action to the world.
@@ -99,7 +128,13 @@ impl TurnEngine {
         match action {
             PlayerAction::Undo => self.undo(),
             PlayerAction::Reset => self.reset(),
-            _ => self.resolve_turn(action),
+            _ => {
+                // When in a Win or Loss state, no further gameplay moves are accepted.
+                if self.outcome.is_game_over() {
+                    return TurnResult::GameOver;
+                }
+                self.resolve_turn(action)
+            }
         }
     }
 
@@ -109,10 +144,9 @@ impl TurnEngine {
         if let Some(prev) = self.undo_stack.pop() {
             self.world = prev;
             self.laser_state = laser::cast_all_lasers(&self.world);
-            self.is_won = check_is_won(&self.world, &self.laser_state);
+            self.outcome = evaluate_outcome(&self.world, &self.laser_state);
             TurnResult::Undone
         } else {
-            // Nothing to undo — still a valid action, just a no-op.
             TurnResult::Ok
         }
     }
@@ -121,7 +155,7 @@ impl TurnEngine {
         self.world = self.initial_world.clone();
         self.undo_stack.clear();
         self.laser_state = laser::cast_all_lasers(&self.world);
-        self.is_won = check_is_won(&self.world, &self.laser_state);
+        self.outcome = evaluate_outcome(&self.world, &self.laser_state);
         TurnResult::WasReset
     }
 
@@ -144,7 +178,7 @@ impl TurnEngine {
             break;
         }
 
-        self.is_won = check_is_won(&self.world, &self.laser_state);
+        self.outcome = evaluate_outcome(&self.world, &self.laser_state);
 
         // Every input is a valid action and goes on the undo stack.
         self.undo_stack.push(snapshot);
@@ -152,11 +186,6 @@ impl TurnEngine {
     }
 
     /// Execute movement for the current action.
-    ///
-    /// - **TurnLeft / TurnRight**: rotate the player 90° in place.
-    /// - **Forward**: step 1 cell in the player's facing direction (push chain).
-    /// - **Backward**: step 1 cell opposite the player's facing direction.
-    /// - **Wait / Interact**: no movement.
     fn resolve_movement(&mut self, action: &PlayerAction) {
         let player_id = match self.world.player_id() {
             Some(id) => id,
@@ -202,18 +231,31 @@ impl TurnEngine {
     }
 }
 
-/// Checks if any active laser beam segment hits a [`BlockKind::Goal`] block.
-fn check_is_won(world: &World, laser_state: &[LaserSegment]) -> bool {
+/// Evaluates if the current state is a Win, Loss, or InProgress.
+/// Striking the Player takes precedence as a Loss.
+fn evaluate_outcome(world: &World, laser_state: &[LaserSegment]) -> GameOutcome {
+    let mut hit_player = false;
+    let mut hit_goal = false;
+
     for segment in laser_state {
         if let Some(hit) = &segment.hit {
             if let Some(body) = world.body(hit.body_id) {
-                if body.kind == BlockKind::Goal {
-                    return true;
+                match body.kind {
+                    BlockKind::Player => hit_player = true,
+                    BlockKind::Goal => hit_goal = true,
+                    _ => {}
                 }
             }
         }
     }
-    false
+
+    if hit_player {
+        GameOutcome::Lost
+    } else if hit_goal {
+        GameOutcome::Won
+    } else {
+        GameOutcome::InProgress
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -321,8 +363,8 @@ mod tests {
         world.spawn(BlockKind::LaserSource, IVec3::new(1, 0, 0), vec![IVec3::ZERO]);
 
         let mut engine = TurnEngine::new(world);
-        engine.apply(PlayerAction::TurnRight); // face +X
-        engine.apply(PlayerAction::Forward);   // push laser
+        engine.apply(PlayerAction::TurnRight);
+        engine.apply(PlayerAction::Forward);
 
         assert_eq!(player_body(&engine).anchor, IVec3::new(1, 0, 0));
         let laser = engine.world.body_at(IVec3::new(2, 0, 0));
@@ -335,28 +377,57 @@ mod tests {
         let mut world = World::new();
         world.spawn(BlockKind::Player, IVec3::ZERO, vec![IVec3::ZERO]);
         let mirror_id = world.spawn(BlockKind::Mirror, IVec3::new(1, 0, 0), vec![IVec3::ZERO]);
-        // Tag mirror as Fixed
         world.body_mut(mirror_id).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
 
         let mut engine = TurnEngine::new(world);
         engine.apply(PlayerAction::TurnRight);
         engine.apply(PlayerAction::Forward);
 
-        // Blocked because mirror is fixed!
         assert_eq!(player_body(&engine).anchor, IVec3::ZERO);
     }
 
     #[test]
-    fn laser_hitting_goal_sets_is_won() {
+    fn laser_hitting_goal_sets_win() {
         let mut world = World::new();
         world.spawn(BlockKind::Player, IVec3::new(0, 0, 0), vec![IVec3::ZERO]);
-        // Laser firing +Y from (2, 0)
         world.spawn(BlockKind::LaserSource, IVec3::new(2, 0, 0), vec![IVec3::ZERO]);
-        // Goal at (2, 4)
         world.spawn(BlockKind::Goal, IVec3::new(2, 4, 0), vec![IVec3::ZERO]);
 
-        let engine = TurnEngine::new(world);
-        assert!(engine.is_won, "Level should be won when laser strikes the Goal pyramid!");
+        let mut engine = TurnEngine::new(world);
+        assert_eq!(engine.outcome, GameOutcome::Won);
+        assert!(engine.is_won());
+
+        // In Win state, gameplay inputs are blocked
+        assert_eq!(engine.apply(PlayerAction::Forward), TurnResult::GameOver);
+        // But Undo is allowed
+        assert_eq!(engine.apply(PlayerAction::Undo), TurnResult::Ok);
+    }
+
+    #[test]
+    fn laser_hitting_player_sets_loss() {
+        let mut world = World::new();
+        // Laser at (2, 0) firing +Y
+        world.spawn(BlockKind::LaserSource, IVec3::new(2, 0, 0), vec![IVec3::ZERO]);
+        // Player steps into laser at (2, 3)
+        world.spawn(BlockKind::Player, IVec3::new(1, 3, 0), vec![IVec3::ZERO]);
+
+        let mut engine = TurnEngine::new(world);
+        assert_eq!(engine.outcome, GameOutcome::InProgress);
+
+        // Turn right and step into (2, 3) where the laser is active!
+        engine.apply(PlayerAction::TurnRight);
+        engine.apply(PlayerAction::Forward);
+
+        assert_eq!(engine.outcome, GameOutcome::Lost);
+        assert!(engine.is_lost());
+
+        // In Loss state, gameplay inputs are blocked
+        assert_eq!(engine.apply(PlayerAction::Forward), TurnResult::GameOver);
+        assert_eq!(engine.apply(PlayerAction::TurnLeft), TurnResult::GameOver);
+
+        // Undo successfully takes the player out of the laser!
+        assert_eq!(engine.apply(PlayerAction::Undo), TurnResult::Undone);
+        assert_eq!(engine.outcome, GameOutcome::InProgress);
     }
 
     #[test]

@@ -46,11 +46,11 @@ pub fn test_level() -> World {
     // 4. Moveable Mirror at (5, 4, 0) — identity "/" orientation: +Y → +X
     world.spawn(BlockKind::Mirror, IVec3::new(5, 4, 0), unit_shape());
 
-    // 5. Fixed Mirror at (6, 6, 0) — rotated 90° about Z: reflects +Y → -X
+    // 5. Fixed Mirror at (6, 6, 0) — rotated 270° about Z: reflective face points South-West (-X, -Y) reflecting +Y → -X
     let fixed_mirror_id = world.spawn(BlockKind::Mirror, IVec3::new(6, 6, 0), unit_shape());
     {
         let mirror = world.body_mut(fixed_mirror_id).unwrap();
-        mirror.orientation = CubeRot::ROT_Z_90;
+        mirror.orientation = CubeRot::ROT_Z_270;
         mirror.tags.set(TagKind::Fixed, TagValue::Unit);
     }
 

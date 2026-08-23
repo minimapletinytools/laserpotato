@@ -123,18 +123,25 @@ fn apply_action(pending: Res<input::PendingAction>, mut game: ResMut<GameState>)
     }
 }
 
-/// Update victory / objective HUD banner based on level completion status.
+/// Update victory / objective HUD banner based on level completion or loss status.
 fn update_victory_ui(
     game: Res<GameState>,
     mut query: Query<(&mut Text, &mut TextColor), With<VictoryBanner>>,
 ) {
     for (mut text, mut color) in &mut query {
-        if game.engine.is_won {
-            text.0 = "★ LEVEL COMPLETE! Laser Struck Goal Pyramid! ★\n[Z] Undo  |  [R] Reset".into();
-            color.0 = Color::srgb(0.3, 1.0, 0.7);
-        } else {
-            text.0 = "Objective: Direct the laser to strike the Goal Pyramid\n[↑/↓] Forward/Back  |  [←/→] Turn  |  [Z] Undo  |  [R] Reset".into();
-            color.0 = Color::srgb(0.9, 0.9, 0.95);
+        match game.engine.outcome {
+            turn::GameOutcome::Won => {
+                text.0 = "★ LEVEL COMPLETE! Laser Struck Goal Pyramid! ★\n[Z] Undo  |  [R] Reset".into();
+                color.0 = Color::srgb(0.3, 1.0, 0.7);
+            }
+            turn::GameOutcome::Lost => {
+                text.0 = "☠ GAME OVER! Laser Vaporized Player! ☠\n[Z] Undo  |  [R] Reset".into();
+                color.0 = Color::srgb(1.0, 0.3, 0.3);
+            }
+            turn::GameOutcome::InProgress => {
+                text.0 = "Objective: Direct the laser to strike the Goal Pyramid (Avoid Beam!)\n[↑/↓] Forward/Back  |  [←/→] Turn  |  [Z] Undo  |  [R] Reset".into();
+                color.0 = Color::srgb(0.9, 0.9, 0.95);
+            }
         }
     }
 }
