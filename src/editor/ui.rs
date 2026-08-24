@@ -135,6 +135,18 @@ pub fn setup_editor_ui(mut commands: Commands) {
                         spawn_action_btn(group, EditorAction::AttemptSolve, "Solve Level");
                     });
 
+                // Middle-Right group: View rotation controls
+                top_bar
+                    .spawn(Node {
+                        column_gap: Val::Px(6.0),
+                        align_items: AlignItems::Center,
+                        ..default()
+                    })
+                    .with_children(|group| {
+                        spawn_action_btn(group, EditorAction::RotateViewCcw, "Rot L [Q]");
+                        spawn_action_btn(group, EditorAction::RotateViewCw, "Rot R [E]");
+                    });
+
                 // Right group: Playtest & Replay Mode controls
                 top_bar
                     .spawn(Node {
@@ -303,7 +315,7 @@ pub fn setup_editor_ui(mut commands: Commands) {
 
                         // Instructions / shortcuts hint
                         sidebar.spawn((
-                            Text::new("Controls:\n• L-Click: Place / Select\n• Drag: Move Block\n• R-Click: Delete Block\n• WASD: Pan Camera\n• Scroll: Zoom In/Out"),
+                            Text::new("Controls:\n- L-Click: Place / Select\n- Drag: Move Block\n- R-Click: Delete Block\n- Q / E: Rotate View 90 deg\n- WASD: Pan Camera\n- Scroll: Zoom In/Out"),
                             TextFont::from_font_size(11.0),
                             TextColor(TEXT_MUTED),
                         ));

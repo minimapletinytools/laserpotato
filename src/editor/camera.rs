@@ -1,4 +1,4 @@
-//! Camera navigation (pan & zoom) for Level Editor and Playtest modes.
+//! Camera navigation (pan, zoom, and 90° level view rotation) for Level Editor and Playtest modes.
 
 use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
@@ -15,6 +15,8 @@ pub struct CameraController {
     pub target: Vec3,
     pub distance: f32,
     pub pitch: f32,
+    pub yaw: f32,
+    pub target_yaw: f32,
     pub min_distance: f32,
     pub max_distance: f32,
 }
@@ -25,13 +27,15 @@ impl Default for CameraController {
             target: Vec3::new(3.5, 0.0, -2.5),
             distance: 18.0,
             pitch: 62.0_f32.to_radians(),
+            yaw: 0.0,
+            target_yaw: 0.0,
             min_distance: 6.0,
             max_distance: 40.0,
         }
     }
 }
 
-/// System controlling camera zoom and pan.
+/// System controlling camera zoom, pan, and 90° level view rotation.
 pub fn camera_controller_system(
     time: Res<Time>,
     app_mode: Option<Res<State<AppMode>>>,
@@ -53,33 +57,60 @@ pub fn camera_controller_system(
             .clamp(controller.min_distance, controller.max_distance);
     }
 
-    // 2. Keyboard Panning (WASD active only in Editor mode)
+    // 2. Keyboard Level View Rotation (Q/E in Editor mode: 90° CCW / CW)
     let is_editor = app_mode.as_ref().map(|s| *s.get() == AppMode::Editor).unwrap_or(true);
     if is_editor {
-        let mut pan_delta = Vec3::ZERO;
-        let pan_speed = 12.0 * (controller.distance / 18.0) * time.delta_secs();
+        if keys.just_pressed(KeyCode::KeyQ) {
+            controller.target_yaw += std::f32::consts::FRAC_PI_2;
+        }
+        if keys.just_pressed(KeyCode::KeyE) {
+            controller.target_yaw -= std::f32::consts::FRAC_PI_2;
+        }
+    }
 
+    // Smooth yaw interpolation towards target_yaw
+    let yaw_diff = controller.target_yaw - controller.yaw;
+    if yaw_diff.abs() > 1e-4 {
+        controller.yaw += yaw_diff * (15.0 * time.delta_secs()).min(1.0);
+    } else {
+        controller.yaw = controller.target_yaw;
+    }
+
+    // 3. Keyboard Panning (WASD active only in Editor mode, screen-relative to current view angle)
+    if is_editor {
+        let pan_speed = 12.0 * (controller.distance / 18.0) * time.delta_secs();
+        let yaw = controller.yaw;
+        let forward = Vec3::new(-yaw.sin(), 0.0, -yaw.cos());
+        let right = Vec3::new(yaw.cos(), 0.0, -yaw.sin());
+
+        let mut pan_delta = Vec3::ZERO;
         if keys.pressed(KeyCode::KeyW) {
-            pan_delta.z -= pan_speed;
+            pan_delta += forward * pan_speed;
         }
         if keys.pressed(KeyCode::KeyS) {
-            pan_delta.z += pan_speed;
+            pan_delta -= forward * pan_speed;
         }
         if keys.pressed(KeyCode::KeyA) {
-            pan_delta.x -= pan_speed;
+            pan_delta -= right * pan_speed;
         }
         if keys.pressed(KeyCode::KeyD) {
-            pan_delta.x += pan_speed;
+            pan_delta += right * pan_speed;
         }
 
         controller.target += pan_delta;
     }
 
-    // 3. Update Camera Transform from spherical orbit around target
+    // 4. Update Camera Transform from spherical orbit around target
     let pitch = controller.pitch;
+    let yaw = controller.yaw;
     let dist = controller.distance;
 
-    let offset = Vec3::new(0.0, dist * pitch.sin(), dist * pitch.cos());
+    let h_radius = dist * pitch.cos();
+    let offset = Vec3::new(
+        h_radius * yaw.sin(),
+        dist * pitch.sin(),
+        h_radius * yaw.cos(),
+    );
     let eye = controller.target + offset;
 
     transform.translation = eye;

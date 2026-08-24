@@ -45,6 +45,8 @@ pub enum EditorAction {
     Save,
     SaveAs,
     ToggleLevelsMenu,
+    RotateViewCcw,
+    RotateViewCw,
     AttemptSolve,
     TestPlay,
     TestWithSolution,
@@ -437,6 +439,7 @@ fn editor_button_clicks_system(
         ),
         (Changed<Interaction>, With<Button>),
     >,
+    mut camera_query: Query<&mut camera::CameraController, With<camera::MainCamera>>,
     mut editor: ResMut<EditorState>,
     mut game: ResMut<GameState>,
     mut next_mode: ResMut<NextState<AppMode>>,
@@ -541,6 +544,18 @@ fn editor_button_clicks_system(
                             editor.toast(format!("Loaded: {}", target_path));
                         }
                     }
+                }
+                EditorAction::RotateViewCcw => {
+                    for mut controller in &mut camera_query {
+                        controller.target_yaw += std::f32::consts::FRAC_PI_2;
+                    }
+                    editor.toast("Rotated level view 90° CCW (Key: Q).");
+                }
+                EditorAction::RotateViewCw => {
+                    for mut controller in &mut camera_query {
+                        controller.target_yaw -= std::f32::consts::FRAC_PI_2;
+                    }
+                    editor.toast("Rotated level view 90° CW (Key: E).");
                 }
                 EditorAction::AttemptSolve => {
                     let current_hash = compute_level_hash(&game.engine.world);
