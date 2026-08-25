@@ -246,4 +246,38 @@ mod tests {
         assert!(reflected.is_some(), "expected beam reflected to -X for REFLECT_X mirror");
         assert_eq!(reflected.unwrap().hit.as_ref().unwrap().cell, IVec3::new(-5, 3, 0));
     }
+
+    #[test]
+    fn mirror_reflects_laser_into_z_axis_up_and_down() {
+        let mut world = World::new();
+        // 1. Horizontal laser source at (0, 0, 0) pointing +Y (North)
+        world.spawn(BlockKind::LaserSource, IVec3::ZERO, vec![IVec3::ZERO]);
+
+        // 2. Mirror at (0, 4, 0) tilted via Roll -Y to reflect +Y into +Z (Upwards)
+        let m1 = world.spawn(BlockKind::Mirror, IVec3::new(0, 4, 0), vec![IVec3::ZERO]);
+        world.body_mut(m1).unwrap().orientation = CubeRot::IDENTITY.rot_world_y_neg();
+
+        // 3. Mirror at (0, 4, 5) tilted to reflect +Z (Up) back into +X (East)
+        let m2 = world.spawn(BlockKind::Mirror, IVec3::new(0, 4, 5), vec![IVec3::ZERO]);
+        world.body_mut(m2).unwrap().orientation = CubeRot::ROT_X_90;
+
+        // 4. Wall at (10, 4, 5) to stop the beam
+        world.spawn(BlockKind::Wall, IVec3::new(10, 4, 5), vec![IVec3::ZERO]);
+        world.sync_grid();
+
+        let segments = cast_all_lasers(&world);
+        assert_eq!(segments.len(), 3, "expected source beam, upward beam, and horizontal beam");
+
+        // Segment 1: from source (0, 0, 0) traveling +Y
+        assert_eq!(segments[0].direction, IVec3::new(0, 1, 0));
+        assert_eq!(segments[0].hit.as_ref().unwrap().cell, IVec3::new(0, 4, 0));
+
+        // Segment 2: from m1 (0, 4, 0) traveling +Z (Upwards!)
+        assert_eq!(segments[1].direction, IVec3::new(0, 0, 1));
+        assert_eq!(segments[1].hit.as_ref().unwrap().cell, IVec3::new(0, 4, 5));
+
+        // Segment 3: from m2 (0, 4, 5) traveling +X (East!)
+        assert_eq!(segments[2].direction, IVec3::new(1, 0, 0));
+        assert_eq!(segments[2].hit.as_ref().unwrap().cell, IVec3::new(10, 4, 5));
+    }
 }

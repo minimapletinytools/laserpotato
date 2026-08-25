@@ -125,4 +125,5 @@ a laser source is a block and a direction, lasers do take up space in the grid b
 	- rolling mirrors, mirrors that roll as you push them
 - subgrid lasers, so each block can actually have 1-3 lasers, with one in the midle and 2 on the outside, and their ordering changes as you reflect it so it makes it more interesting, and you can split them etc
 - rainbow lasers, similar to subgrid laser but it's one big wide laser
-
+- destructible blocks 
+- bombs that destroy stuff (maybe even indestructible block)

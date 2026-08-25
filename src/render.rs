@@ -1002,8 +1002,11 @@ pub fn draw_coordinate_gizmo(mut gizmos: Gizmos) {
     gizmos.arrow(origin, origin + Vec3::new(0.0, len, 0.0), Color::srgb(0.3, 0.6, 1.0));
 }
 
-/// Draw ground grid lines across the level area in Bevy coordinates.
-pub fn draw_grid_gizmos(mut gizmos: Gizmos) {
+/// Draw ground grid lines across the level area in Bevy coordinates at the active Z level.
+pub fn draw_grid_gizmos(
+    mut gizmos: Gizmos,
+    editor: Option<Res<crate::editor::EditorState>>,
+) {
     if !SHOW_GRID {
         return;
     }
@@ -1013,16 +1016,55 @@ pub fn draw_grid_gizmos(mut gizmos: Gizmos) {
     let min_sim_y = -1.5_f32;
     let max_sim_y = 7.5_f32;
 
-    let floor_y = -0.49_f32;
-    let grid_color = Color::srgba(0.3, 0.35, 0.45, 0.35);
+    let floor_y0 = -0.49_f32;
+    let base_color = Color::srgba(0.3, 0.35, 0.45, 0.35);
+
+    let active_z = editor.as_ref().map(|ed| {
+        if ed.z_mode == crate::editor::ZPlacementMode::FixedLayer {
+            ed.current_z
+        } else {
+            0
+        }
+    }).unwrap_or(0);
+
+    let active_floor_y = (active_z as f32) - 0.49_f32;
+
+    let grid_color = if active_z != 0 {
+        Color::srgba(0.2, 0.75, 1.0, 0.65)
+    } else {
+        base_color
+    };
+
+    // If active_z != 0, also draw base ground grid faintly
+    if active_z != 0 {
+        let mut sim_y = min_sim_y;
+        while sim_y <= max_sim_y + 0.01 {
+            let z = -sim_y;
+            gizmos.line(
+                Vec3::new(min_x, floor_y0, z),
+                Vec3::new(max_x, floor_y0, z),
+                Color::srgba(0.2, 0.25, 0.35, 0.20),
+            );
+            sim_y += 1.0;
+        }
+        let mut x = min_x;
+        while x <= max_x + 0.01 {
+            gizmos.line(
+                Vec3::new(x, floor_y0, -min_sim_y),
+                Vec3::new(x, floor_y0, -max_sim_y),
+                Color::srgba(0.2, 0.25, 0.35, 0.20),
+            );
+            x += 1.0;
+        }
+    }
 
     // Grid lines along X (varying Sim Y => Bevy Z = -sim_y)
     let mut sim_y = min_sim_y;
     while sim_y <= max_sim_y + 0.01 {
         let z = -sim_y;
         gizmos.line(
-            Vec3::new(min_x, floor_y, z),
-            Vec3::new(max_x, floor_y, z),
+            Vec3::new(min_x, active_floor_y, z),
+            Vec3::new(max_x, active_floor_y, z),
             grid_color,
         );
         sim_y += 1.0;
@@ -1032,8 +1074,8 @@ pub fn draw_grid_gizmos(mut gizmos: Gizmos) {
     let mut x = min_x;
     while x <= max_x + 0.01 {
         gizmos.line(
-            Vec3::new(x, floor_y, -min_sim_y),
-            Vec3::new(x, floor_y, -max_sim_y),
+            Vec3::new(x, active_floor_y, -min_sim_y),
+            Vec3::new(x, active_floor_y, -max_sim_y),
             grid_color,
         );
         x += 1.0;

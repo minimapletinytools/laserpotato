@@ -13,11 +13,11 @@ use std::sync::mpsc::{self, Receiver};
 use std::time::Duration;
 
 use bevy::prelude::*;
-use glam::{IVec2, IVec3};
+use glam::IVec3;
 
 use crate::block_types::BlockKind;
 use crate::level::{self, compute_level_hash, LevelData};
-use crate::sim::{BodyId, CubeRot, TagKind, TagValue, World};
+use crate::sim::{BodyId, TagKind, TagValue, World};
 use crate::solver::{self, SolveResult, SolverConfig};
 use crate::turn::{PlayerAction, TurnEngine};
 use crate::GameState;
@@ -52,6 +52,13 @@ pub enum EditorAction {
     TestWithSolution,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum ZPlacementMode {
+    #[default]
+    StackOnTop,
+    FixedLayer,
+}
+
 // ---------------------------------------------------------------------------
 // Editor State Resource
 // ---------------------------------------------------------------------------
@@ -62,12 +69,16 @@ pub struct EditorState {
     pub selected_kind: BlockKind,
     /// Property toggle: true = stationary (fixed), false = moveable.
     pub is_fixed: bool,
+    /// Active Z placement mode (StackOnTop vs FixedLayer).
+    pub z_mode: ZPlacementMode,
+    /// Active Z layer for FixedLayer mode (default 0).
+    pub current_z: i32,
     /// Currently selected body on grid for Inspector.
     pub selected_body_id: Option<BodyId>,
     /// Currently dragging body ID on grid.
     pub dragging_body_id: Option<BodyId>,
-    /// Hovered grid coordinate (X, Y) on the ground plane.
-    pub hovered_cell: Option<IVec2>,
+    /// Hovered grid coordinate (X, Y, Z) in simulation space.
+    pub hovered_cell: Option<IVec3>,
     /// Current level file path.
     pub current_level_path: String,
     /// Background solver worker receiver.
@@ -89,6 +100,8 @@ impl Default for EditorState {
         Self {
             selected_kind: BlockKind::Mirror,
             is_fixed: false,
+            z_mode: ZPlacementMode::StackOnTop,
+            current_z: 0,
             selected_body_id: None,
             dragging_body_id: None,
             hovered_cell: None,
@@ -224,24 +237,129 @@ pub fn update_palette_3d_preview(
 // 3D Grid Raycasting & Mouse Interaction
 // ---------------------------------------------------------------------------
 
-fn raycast_ground_plane(
+fn ray_intersect_aabb(
+    ray_origin: Vec3,
+    ray_dir: Vec3,
+    min: Vec3,
+    max: Vec3,
+) -> Option<f32> {
+    let inv_d = Vec3::new(
+        if ray_dir.x.abs() > 1e-6 { 1.0 / ray_dir.x } else { f32::INFINITY },
+        if ray_dir.y.abs() > 1e-6 { 1.0 / ray_dir.y } else { f32::INFINITY },
+        if ray_dir.z.abs() > 1e-6 { 1.0 / ray_dir.z } else { f32::INFINITY },
+    );
+
+    let t0 = (min - ray_origin) * inv_d;
+    let t1 = (max - ray_origin) * inv_d;
+
+    let tmin_v = t0.min(t1);
+    let tmax_v = t0.max(t1);
+
+    let tmin = tmin_v.x.max(tmin_v.y).max(tmin_v.z);
+    let tmax = tmax_v.x.min(tmax_v.y).min(tmax_v.z);
+
+    if tmin <= tmax && tmax >= 0.0 {
+        Some(if tmin >= 0.0 { tmin } else { tmax })
+    } else {
+        None
+    }
+}
+
+fn raycast_plane_at_z(
     camera: &Camera,
     camera_transform: &GlobalTransform,
     cursor_pos: Vec2,
-) -> Option<IVec2> {
+    z_level: i32,
+) -> Option<IVec3> {
     let ray = camera.viewport_to_world(camera_transform, cursor_pos).ok()?;
-    if ray.direction.y.abs() < 1e-5 {
+    let ray_dir: Vec3 = ray.direction.into();
+    if ray_dir.y.abs() < 1e-5 {
         return None;
     }
-    // Floor plane is at Y = 0 in Bevy space
-    let t = -ray.origin.y / ray.direction.y;
+    // In Bevy coordinates, Sim Z is along the Y axis: Y_bevy = z_level as f32
+    let target_y = z_level as f32;
+    let t = (target_y - ray.origin.y) / ray_dir.y;
     if t < 0.0 {
         return None;
     }
-    let world_pt = ray.origin + ray.direction * t;
+    let world_pt = ray.origin + ray_dir * t;
     let gx = (world_pt.x + 0.5).floor() as i32;
-    let gy = (-world_pt.z + 0.5).floor() as i32; // In sim coordinates, +Y is -Z in Bevy
-    Some(IVec2::new(gx, gy))
+    let gy = (-world_pt.z + 0.5).floor() as i32;
+    Some(IVec3::new(gx, gy, z_level))
+}
+
+fn raycast_stack_on_top(
+    camera: &Camera,
+    camera_transform: &GlobalTransform,
+    cursor_pos: Vec2,
+    world: &World,
+    ignore_body: Option<BodyId>,
+) -> Option<(IVec3, Option<BodyId>)> {
+    let ray = camera.viewport_to_world(camera_transform, cursor_pos).ok()?;
+    let ray_dir: Vec3 = ray.direction.into();
+
+    let mut closest: Option<(f32, IVec3, BodyId)> = None;
+
+    for body in world.bodies() {
+        if Some(body.id) == ignore_body {
+            continue;
+        }
+        for world_cell in body.world_cells() {
+            // Bevy coordinate conversion: (world_cell.x, world_cell.z, -world_cell.y)
+            let center = Vec3::new(
+                world_cell.x as f32,
+                world_cell.z as f32,
+                -world_cell.y as f32,
+            );
+            let half = Vec3::splat(0.5);
+            let min = center - half;
+            let max = center + half;
+
+            if let Some(t) = ray_intersect_aabb(ray.origin, ray_dir, min, max) {
+                if closest.is_none() || t < closest.unwrap().0 {
+                    closest = Some((t, world_cell, body.id));
+                }
+            }
+        }
+    }
+
+    if let Some((_t, hit_cell, hit_body_id)) = closest {
+        // Find highest occupied Z coordinate among all bodies at column (hit_cell.x, hit_cell.y)
+        let mut max_z = hit_cell.z;
+        for body in world.bodies() {
+            if Some(body.id) == ignore_body {
+                continue;
+            }
+            for cell in body.world_cells() {
+                if cell.x == hit_cell.x && cell.y == hit_cell.y && cell.z > max_z {
+                    max_z = cell.z;
+                }
+            }
+        }
+        let target_cell = IVec3::new(hit_cell.x, hit_cell.y, max_z + 1);
+        Some((target_cell, Some(hit_body_id)))
+    } else {
+        // No block hit directly -> raycast ground plane at Z=0 and check if column has blocks
+        let ground_cell = raycast_plane_at_z(camera, camera_transform, cursor_pos, 0)?;
+        let mut max_z = -1;
+        let mut found_body = None;
+        for body in world.bodies() {
+            if Some(body.id) == ignore_body {
+                continue;
+            }
+            for cell in body.world_cells() {
+                if cell.x == ground_cell.x && cell.y == ground_cell.y && cell.z > max_z {
+                    max_z = cell.z;
+                    found_body = Some(body.id);
+                }
+            }
+        }
+        if max_z >= 0 {
+            Some((IVec3::new(ground_cell.x, ground_cell.y, max_z + 1), found_body))
+        } else {
+            Some((ground_cell, None))
+        }
+    }
 }
 
 /// Helper to check if a body can be moved to a target anchor without colliding with other bodies.
@@ -273,10 +391,24 @@ fn editor_grid_interaction_system(
     if let Some(id) = editor.selected_body_id {
         if keyboard.just_pressed(KeyCode::KeyR) {
             if let Some(b) = game.engine.world.body_mut(id) {
-                b.orientation = b.orientation.rotate_z_cw();
+                b.orientation = b.orientation.rot_world_z_cw();
                 game.engine.world.sync_grid();
                 editor.cached_solution = None;
-                editor.toast("Rotated block CW (Key: R).");
+                editor.toast("Rotated block CW around World Z axis (Key: R).");
+            }
+        } else if keyboard.just_pressed(KeyCode::KeyT) {
+            if let Some(b) = game.engine.world.body_mut(id) {
+                b.orientation = b.orientation.rot_world_x_pos();
+                game.engine.world.sync_grid();
+                editor.cached_solution = None;
+                editor.toast("Pitched block +90° around World X axis (Key: T).");
+            }
+        } else if keyboard.just_pressed(KeyCode::KeyG) {
+            if let Some(b) = game.engine.world.body_mut(id) {
+                b.orientation = b.orientation.rot_world_y_pos();
+                game.engine.world.sync_grid();
+                editor.cached_solution = None;
+                editor.toast("Rolled block +90° around World Y axis (Key: G).");
             }
         } else if keyboard.just_pressed(KeyCode::KeyX) {
             if let Some(b) = game.engine.world.body_mut(id) {
@@ -321,43 +453,84 @@ fn editor_grid_interaction_system(
     }
 
     let Ok((camera, camera_transform)) = camera_query.single() else { return };
-    let Some(cell) = raycast_ground_plane(camera, camera_transform, cursor_pos) else {
-        editor.hovered_cell = None;
-        return;
+
+    let ignore_id = editor.dragging_body_id;
+    let (target_cell, clicked_body_id) = match editor.z_mode {
+        ZPlacementMode::StackOnTop => {
+            let Some((cell, body_id)) = raycast_stack_on_top(camera, camera_transform, cursor_pos, &game.engine.world, ignore_id) else {
+                editor.hovered_cell = None;
+                return;
+            };
+            (cell, body_id)
+        }
+        ZPlacementMode::FixedLayer => {
+            let Some(cell) = raycast_plane_at_z(camera, camera_transform, cursor_pos, editor.current_z) else {
+                editor.hovered_cell = None;
+                return;
+            };
+            let body_id = game.engine.world.body_at(cell).map(|b| b.id);
+            (cell, body_id)
+        }
     };
 
-    editor.hovered_cell = Some(cell);
-    let cell_pos = IVec3::new(cell.x, cell.y, 0);
+    editor.hovered_cell = Some(target_cell);
+    let cell_pos = target_cell;
 
     // Left Click: Place or Select & Start Dragging
     if mouse_button.just_pressed(MouseButton::Left) {
-        if let Some(body) = game.engine.world.body_at(cell_pos) {
-            let body_id = body.id;
-            let kind = body.kind;
-            editor.selected_body_id = Some(body_id);
-            editor.dragging_body_id = Some(body_id);
-            editor.toast(format!("Selected {:?} at ({}, {})", kind, cell.x, cell.y));
+        if editor.z_mode == ZPlacementMode::FixedLayer {
+            if let Some(body) = game.engine.world.body_at(cell_pos) {
+                let body_id = body.id;
+                let kind = body.kind;
+                editor.selected_body_id = Some(body_id);
+                editor.dragging_body_id = Some(body_id);
+                editor.toast(format!("Selected {:?} at ({}, {}, {})", kind, cell_pos.x, cell_pos.y, cell_pos.z));
+            } else {
+                // Place block at layer Z
+                let kind = editor.selected_kind;
+                let (can_moveable, can_fixed) = editor.allowed_fixed_state(kind);
+                let is_fixed = if !can_moveable { true } else if !can_fixed { false } else { editor.is_fixed };
+
+                if kind == BlockKind::Player {
+                    if let Some(player_id) = game.engine.world.player_id() {
+                        if let Some(p) = game.engine.world.body_mut(player_id) {
+                            p.anchor = cell_pos;
+                            game.engine.world.sync_grid();
+                            editor.selected_body_id = Some(player_id);
+                            editor.dragging_body_id = None;
+                            editor.toast(format!("Relocated player character to ({}, {}, {}).", cell_pos.x, cell_pos.y, cell_pos.z));
+                            editor.cached_solution = None;
+                            return;
+                        }
+                    }
+                }
+
+                let new_id = game.engine.world.spawn(kind, cell_pos, vec![IVec3::ZERO]);
+                if let Some(b) = game.engine.world.body_mut(new_id) {
+                    if is_fixed {
+                        b.tags.set(TagKind::Fixed, TagValue::Unit);
+                    }
+                }
+                game.engine.world.sync_grid();
+                editor.selected_body_id = Some(new_id);
+                editor.dragging_body_id = None;
+                editor.cached_solution = None;
+                editor.toast(format!("Placed {:?} at Layer Z={} ({}, {})", kind, cell_pos.z, cell_pos.x, cell_pos.y));
+            }
         } else {
-            // Cell empty -> place currently selected block from palette
+            // StackOnTop mode:
             let kind = editor.selected_kind;
             let (can_moveable, can_fixed) = editor.allowed_fixed_state(kind);
-            let is_fixed = if !can_moveable {
-                true
-            } else if !can_fixed {
-                false
-            } else {
-                editor.is_fixed
-            };
+            let is_fixed = if !can_moveable { true } else if !can_fixed { false } else { editor.is_fixed };
 
-            // If placing Player and player already exists, relocate player
             if kind == BlockKind::Player {
                 if let Some(player_id) = game.engine.world.player_id() {
                     if let Some(p) = game.engine.world.body_mut(player_id) {
                         p.anchor = cell_pos;
                         game.engine.world.sync_grid();
                         editor.selected_body_id = Some(player_id);
-                        editor.dragging_body_id = Some(player_id);
-                        editor.toast("Relocated player character.");
+                        editor.dragging_body_id = None;
+                        editor.toast(format!("Relocated player character to ({}, {}, {}).", cell_pos.x, cell_pos.y, cell_pos.z));
                         editor.cached_solution = None;
                         return;
                     }
@@ -372,9 +545,13 @@ fn editor_grid_interaction_system(
             }
             game.engine.world.sync_grid();
             editor.selected_body_id = Some(new_id);
-            editor.dragging_body_id = Some(new_id);
+            editor.dragging_body_id = None;
             editor.cached_solution = None;
-            editor.toast(format!("Placed {:?} at ({}, {})", kind, cell.x, cell.y));
+            if cell_pos.z > 0 {
+                editor.toast(format!("Stacked {:?} on top at ({}, {}, {})", kind, cell_pos.x, cell_pos.y, cell_pos.z));
+            } else {
+                editor.toast(format!("Placed {:?} at ({}, {}, {})", kind, cell_pos.x, cell_pos.y, cell_pos.z));
+            }
         }
     } else if mouse_button.pressed(MouseButton::Left) {
         // Continuous Dragging of selected / placed block across grid
@@ -397,15 +574,20 @@ fn editor_grid_interaction_system(
     if mouse_button.just_released(MouseButton::Left) {
         if let Some(drag_id) = editor.dragging_body_id.take() {
             if let Some(body) = game.engine.world.body(drag_id) {
-                editor.toast(format!("Moved {:?} to ({}, {})", body.kind, body.anchor.x, body.anchor.y));
+                editor.toast(format!("Moved {:?} to ({}, {}, {})", body.kind, body.anchor.x, body.anchor.y, body.anchor.z));
             }
         }
     }
 
     // Right Click: Delete Block
     if mouse_button.just_pressed(MouseButton::Right) {
-        if let Some(body) = game.engine.world.body_at(cell_pos) {
-            let id = body.id;
+        let to_delete = if editor.z_mode == ZPlacementMode::FixedLayer {
+            game.engine.world.body_at(cell_pos).map(|b| b.id)
+        } else {
+            clicked_body_id.or_else(|| game.engine.world.body_at(cell_pos).map(|b| b.id))
+        };
+
+        if let Some(id) = to_delete {
             game.engine.world.despawn(id);
             if editor.selected_body_id == Some(id) {
                 editor.selected_body_id = None;
@@ -414,7 +596,7 @@ fn editor_grid_interaction_system(
                 editor.dragging_body_id = None;
             }
             editor.cached_solution = None;
-            editor.toast(format!("Deleted block at ({}, {})", cell.x, cell.y));
+            editor.toast(format!("Deleted block at ({}, {}, {})", cell_pos.x, cell_pos.y, cell_pos.z));
         }
     }
 }
@@ -430,12 +612,25 @@ fn editor_button_clicks_system(
             Option<&ui::PaletteButton>,
             Option<&ui::PropertyToggleButton>,
             Option<&ui::ActionButton>,
-            Option<&ui::RotateCwButton>,
-            Option<&ui::RotateCcwButton>,
-            Option<&ui::ReflectXButton>,
-            Option<&ui::ReflectYButton>,
-            Option<&ui::ToggleFixedButton>,
-            Option<&ui::DeleteBlockButton>,
+            (
+                Option<&ui::RotateCwButton>,
+                Option<&ui::RotateCcwButton>,
+                Option<&ui::RotateXPosButton>,
+                Option<&ui::RotateXNegButton>,
+                Option<&ui::RotateYPosButton>,
+                Option<&ui::RotateYNegButton>,
+            ),
+            (
+                Option<&ui::ReflectXButton>,
+                Option<&ui::ReflectYButton>,
+                Option<&ui::ToggleFixedButton>,
+                Option<&ui::DeleteBlockButton>,
+            ),
+            (
+                Option<&ui::ZModeToggleButton>,
+                Option<&ui::ZLayerIncButton>,
+                Option<&ui::ZLayerDecButton>,
+            ),
         ),
         (Changed<Interaction>, With<Button>),
     >,
@@ -445,8 +640,15 @@ fn editor_button_clicks_system(
     mut next_mode: ResMut<NextState<AppMode>>,
     mut playback: ResMut<crate::PlaybackState>,
 ) {
-    for (interaction, palette_btn, prop_btn, action_btn, rot_cw, rot_ccw, ref_x, ref_y, toggle_fixed, del_btn) in
-        &mut interaction_query
+    for (
+        interaction,
+        palette_btn,
+        prop_btn,
+        action_btn,
+        (rot_cw, rot_ccw, rot_x_pos, rot_x_neg, rot_y_pos, rot_y_neg),
+        (ref_x, ref_y, toggle_fixed, del_btn),
+        (z_mode_btn, z_inc_btn, z_dec_btn),
+    ) in &mut interaction_query
     {
         if *interaction != Interaction::Pressed {
             continue;
@@ -477,7 +679,29 @@ fn editor_button_clicks_system(
             }
         }
 
-        // 3. Top Action buttons
+        // 3. Z placement mode toggle
+        if let Some(btn) = z_mode_btn {
+            editor.z_mode = btn.0;
+            let current_z = editor.current_z;
+            match btn.0 {
+                ZPlacementMode::StackOnTop => editor.toast("Z Mode: Stack on Top."),
+                ZPlacementMode::FixedLayer => editor.toast(format!("Z Mode: Fixed Layer (Z={}).", current_z)),
+            }
+        }
+
+        // 4. Z layer increment / decrement
+        if z_inc_btn.is_some() {
+            let next_z = (editor.current_z + 1).min(20);
+            editor.current_z = next_z;
+            editor.toast(format!("Z Layer: {}", next_z));
+        }
+        if z_dec_btn.is_some() {
+            let next_z = (editor.current_z - 1).max(-5);
+            editor.current_z = next_z;
+            editor.toast(format!("Z Layer: {}", next_z));
+        }
+
+        // 5. Top Action buttons
         if let Some(btn) = action_btn {
             match btn.0 {
                 EditorAction::NewLevel => {
@@ -601,14 +825,58 @@ fn editor_button_clicks_system(
             }
         }
 
-        // 4. Inspector rotation buttons
+        // 4. Inspector rotation buttons (Pitch, Roll, Yaw in World Space)
+        if rot_x_pos.is_some() {
+            if let Some(id) = editor.selected_body_id {
+                if let Some(body) = game.engine.world.body_mut(id) {
+                    body.orientation = body.orientation.rot_world_x_pos();
+                    game.engine.world.sync_grid();
+                    editor.cached_solution = None;
+                    editor.toast("Pitched block +90° around World X axis.");
+                }
+            }
+        }
+
+        if rot_x_neg.is_some() {
+            if let Some(id) = editor.selected_body_id {
+                if let Some(body) = game.engine.world.body_mut(id) {
+                    body.orientation = body.orientation.rot_world_x_neg();
+                    game.engine.world.sync_grid();
+                    editor.cached_solution = None;
+                    editor.toast("Pitched block -90° around World X axis.");
+                }
+            }
+        }
+
+        if rot_y_pos.is_some() {
+            if let Some(id) = editor.selected_body_id {
+                if let Some(body) = game.engine.world.body_mut(id) {
+                    body.orientation = body.orientation.rot_world_y_pos();
+                    game.engine.world.sync_grid();
+                    editor.cached_solution = None;
+                    editor.toast("Rolled block +90° around World Y axis.");
+                }
+            }
+        }
+
+        if rot_y_neg.is_some() {
+            if let Some(id) = editor.selected_body_id {
+                if let Some(body) = game.engine.world.body_mut(id) {
+                    body.orientation = body.orientation.rot_world_y_neg();
+                    game.engine.world.sync_grid();
+                    editor.cached_solution = None;
+                    editor.toast("Rolled block -90° around World Y axis.");
+                }
+            }
+        }
+
         if rot_cw.is_some() {
             if let Some(id) = editor.selected_body_id {
                 if let Some(body) = game.engine.world.body_mut(id) {
-                    body.orientation = body.orientation.then(CubeRot::ROT_Z_270);
+                    body.orientation = body.orientation.rot_world_z_cw();
                     game.engine.world.sync_grid();
                     editor.cached_solution = None;
-                    editor.toast("Rotated block 90° Clockwise.");
+                    editor.toast("Rotated block 90° Clockwise around World Z axis.");
                 }
             }
         }
@@ -616,10 +884,10 @@ fn editor_button_clicks_system(
         if rot_ccw.is_some() {
             if let Some(id) = editor.selected_body_id {
                 if let Some(body) = game.engine.world.body_mut(id) {
-                    body.orientation = body.orientation.then(CubeRot::ROT_Z_90);
+                    body.orientation = body.orientation.rot_world_z_ccw();
                     game.engine.world.sync_grid();
                     editor.cached_solution = None;
-                    editor.toast("Rotated block 90° Counter-Clockwise.");
+                    editor.toast("Rotated block 90° Counter-Clockwise around World Z axis.");
                 }
             }
         }
@@ -739,18 +1007,33 @@ fn draw_editor_selection_gizmos(
         return;
     }
 
-    // 1. Draw hovered cell highlight outline
+    // 1. Draw hovered cell highlight outline (full 3D box)
     if let Some(cell) = editor.hovered_cell {
         let x = cell.x as f32;
+        let y = cell.z as f32;
         let z = -cell.y as f32;
-        let y = 0.05;
+        let y0 = y - 0.48;
+        let y1 = y + 0.48;
         let d = 0.48;
         let col = Color::srgba(1.0, 0.9, 0.2, 0.85);
 
-        gizmos.line(Vec3::new(x - d, y, z - d), Vec3::new(x + d, y, z - d), col);
-        gizmos.line(Vec3::new(x + d, y, z - d), Vec3::new(x + d, y, z + d), col);
-        gizmos.line(Vec3::new(x + d, y, z + d), Vec3::new(x - d, y, z + d), col);
-        gizmos.line(Vec3::new(x - d, y, z + d), Vec3::new(x - d, y, z - d), col);
+        // Bottom square
+        gizmos.line(Vec3::new(x - d, y0, z - d), Vec3::new(x + d, y0, z - d), col);
+        gizmos.line(Vec3::new(x + d, y0, z - d), Vec3::new(x + d, y0, z + d), col);
+        gizmos.line(Vec3::new(x + d, y0, z + d), Vec3::new(x - d, y0, z + d), col);
+        gizmos.line(Vec3::new(x - d, y0, z + d), Vec3::new(x - d, y0, z - d), col);
+
+        // Top square
+        gizmos.line(Vec3::new(x - d, y1, z - d), Vec3::new(x + d, y1, z - d), col);
+        gizmos.line(Vec3::new(x + d, y1, z - d), Vec3::new(x + d, y1, z + d), col);
+        gizmos.line(Vec3::new(x + d, y1, z + d), Vec3::new(x - d, y1, z + d), col);
+        gizmos.line(Vec3::new(x - d, y1, z + d), Vec3::new(x - d, y1, z - d), col);
+
+        // Vertical edges
+        gizmos.line(Vec3::new(x - d, y0, z - d), Vec3::new(x - d, y1, z - d), col);
+        gizmos.line(Vec3::new(x + d, y0, z - d), Vec3::new(x + d, y1, z - d), col);
+        gizmos.line(Vec3::new(x + d, y0, z + d), Vec3::new(x + d, y1, z + d), col);
+        gizmos.line(Vec3::new(x - d, y0, z + d), Vec3::new(x - d, y1, z + d), col);
     }
 
     // 2. Draw selected body bounding box
@@ -759,9 +1042,10 @@ fn draw_editor_selection_gizmos(
             let col = Color::srgba(0.3, 0.8, 1.0, 0.95);
             for &cell in &body.world_cells() {
                 let x = cell.x as f32;
+                let y = cell.z as f32;
                 let z = -cell.y as f32;
-                let y0 = -0.45;
-                let y1 = 0.45;
+                let y0 = y - 0.45;
+                let y1 = y + 0.45;
                 let d = 0.52;
 
                 // Bottom square
@@ -814,8 +1098,39 @@ fn editor_keyboard_shortcuts_system(
         }
     }
 
+    if *app_mode.get() != AppMode::Editor {
+        return;
+    }
+
+    // Toggle Z placement mode with Tab
+    if keys.just_pressed(KeyCode::Tab) {
+        let (new_mode, msg) = match editor.z_mode {
+            ZPlacementMode::StackOnTop => {
+                let z = editor.current_z;
+                (ZPlacementMode::FixedLayer, format!("Z Mode: Fixed Layer (Z={}) [Tab]", z))
+            }
+            ZPlacementMode::FixedLayer => {
+                (ZPlacementMode::StackOnTop, "Z Mode: Stack on Top [Tab]".to_string())
+            }
+        };
+        editor.z_mode = new_mode;
+        editor.toast(msg);
+    }
+
+    // Change Z layer with PageUp/PageDown or BracketRight/BracketLeft
+    if keys.just_pressed(KeyCode::PageUp) || keys.just_pressed(KeyCode::BracketRight) {
+        let next_z = (editor.current_z + 1).min(20);
+        editor.current_z = next_z;
+        editor.toast(format!("Z Layer: {} [PgUp / \\]]", next_z));
+    }
+    if keys.just_pressed(KeyCode::PageDown) || keys.just_pressed(KeyCode::BracketLeft) {
+        let next_z = (editor.current_z - 1).max(-5);
+        editor.current_z = next_z;
+        editor.toast(format!("Z Layer: {} [PgDn / \\[]", next_z));
+    }
+
     // Delete selected block with Delete / Backspace
-    if *app_mode.get() == AppMode::Editor && (keys.just_pressed(KeyCode::Delete) || keys.just_pressed(KeyCode::Backspace)) {
+    if keys.just_pressed(KeyCode::Delete) || keys.just_pressed(KeyCode::Backspace) {
         if let Some(id) = editor.selected_body_id {
             game.engine.world.despawn(id);
             editor.selected_body_id = None;
@@ -852,5 +1167,44 @@ mod tests {
 
         // Moving b1 to its own current cell (1, 1, 0) is valid
         assert!(can_move_body_to(&world, b1, IVec3::new(1, 1, 0)));
+    }
+
+    #[test]
+    fn ray_intersect_aabb_test() {
+        let origin = Vec3::new(0.0, 10.0, 0.0);
+        let dir = Vec3::new(0.0, -1.0, 0.0);
+        let min = Vec3::new(-0.5, -0.5, -0.5);
+        let max = Vec3::new(0.5, 0.5, 0.5);
+
+        let hit = ray_intersect_aabb(origin, dir, min, max);
+        assert!(hit.is_some());
+        let t = hit.unwrap();
+        assert!((t - 9.5).abs() < 1e-4);
+
+        // Ray missing AABB
+        let miss_dir = Vec3::new(1.0, 0.0, 0.0);
+        assert!(ray_intersect_aabb(origin, miss_dir, min, max).is_none());
+    }
+
+    #[test]
+    fn stack_on_top_target_z_calculation() {
+        let mut world = World::new();
+        let _w1 = world.spawn(BlockKind::Wall, IVec3::new(3, 4, 0), vec![IVec3::ZERO]);
+        let w2 = world.spawn(BlockKind::Wall, IVec3::new(3, 4, 1), vec![IVec3::ZERO]);
+
+        // Column (3, 4) has blocks at Z=0 and Z=1.
+        // When ignoring w2 (e.g. while dragging w2), highest occupied Z is 0 -> target is Z=1.
+        let mut max_z_ignore_w2 = -1;
+        for body in world.bodies() {
+            if body.id == w2 {
+                continue;
+            }
+            for cell in body.world_cells() {
+                if cell.x == 3 && cell.y == 4 && cell.z > max_z_ignore_w2 {
+                    max_z_ignore_w2 = cell.z;
+                }
+            }
+        }
+        assert_eq!(max_z_ignore_w2 + 1, 1);
     }
 }

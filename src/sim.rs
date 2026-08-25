@@ -43,9 +43,19 @@ impl CubeRot {
         mat: [[1, 0, 0], [0, 0, -1], [0, 1, 0]],
     };
 
+    /// 270° about the local X axis (equivalently, −90°).
+    pub const ROT_X_270: CubeRot = CubeRot {
+        mat: [[1, 0, 0], [0, 0, 1], [0, -1, 0]],
+    };
+
     /// 90° about the local Y axis.
     pub const ROT_Y_90: CubeRot = CubeRot {
         mat: [[0, 0, 1], [0, 1, 0], [-1, 0, 0]],
+    };
+
+    /// 270° about the local Y axis (equivalently, −90°).
+    pub const ROT_Y_270: CubeRot = CubeRot {
+        mat: [[0, 0, -1], [0, 1, 0], [1, 0, 0]],
     };
 
     /// 90° about the local Z axis.
@@ -177,6 +187,46 @@ impl CubeRot {
     /// Rotate 90° counter-clockwise around the local Z axis.
     pub fn rotate_z_ccw(self) -> Self {
         self.then(Self::ROT_Z_90)
+    }
+
+    /// Rotate 90° about the local X axis (pitch tilt).
+    pub fn rotate_x_90(self) -> Self {
+        self.then(Self::ROT_X_90)
+    }
+
+    /// Rotate 90° about the local Y axis (roll tilt).
+    pub fn rotate_y_90(self) -> Self {
+        self.then(Self::ROT_Y_90)
+    }
+
+    /// Rotate around World X axis by +90° (Pitch forward/up).
+    pub fn rot_world_x_pos(self) -> Self {
+        Self::ROT_X_90.then(self)
+    }
+
+    /// Rotate around World X axis by -90° (Pitch backward/down).
+    pub fn rot_world_x_neg(self) -> Self {
+        Self::ROT_X_270.then(self)
+    }
+
+    /// Rotate around World Y axis by +90° (Roll right).
+    pub fn rot_world_y_pos(self) -> Self {
+        Self::ROT_Y_90.then(self)
+    }
+
+    /// Rotate around World Y axis by -90° (Roll left / tilt East to Up).
+    pub fn rot_world_y_neg(self) -> Self {
+        Self::ROT_Y_270.then(self)
+    }
+
+    /// Rotate around World Z axis CW (-90°).
+    pub fn rot_world_z_cw(self) -> Self {
+        Self::ROT_Z_270.then(self)
+    }
+
+    /// Rotate around World Z axis CCW (+90°).
+    pub fn rot_world_z_ccw(self) -> Self {
+        Self::ROT_Z_90.then(self)
     }
 
     /// Enumerate all 48 distinct symmetry operations of the full octahedral group Oh.

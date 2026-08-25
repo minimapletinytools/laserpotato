@@ -1,5 +1,57 @@
 
+:: 8/24/2026 MVP
 
+MVP goal is get game to a state with minimal mechanics so you can start designing puzzles
+
+-fix state issue in level editor
+-think through state/movement logic ordering (see how other games do it)
+    -in particular, you will have lasers destroying blocks (that can take 1 turn acutally)
+    -also blocks falling to block lasers (maybe also have this take 1 turn)
+    -but in general lasers mke things complicated
+-add level selector and some way to organize levels
+-add ability to save solutions next to levels
+-add 3d rotation support to leel editor
+-blocks 
+    -3d mirrors
+    -tubes (for laser splitting)
+    -add directional laser goal
+    -destructible blocks that can't be moved
+    -destructible blocks that can be moved
+    -combined movable blocks 
+    -glass block, laser passes through but not ppl
+
+
+:: 8/24/2026 visual language
+
+lets switch gears for a moment and work on styling. we want a layered styling sorta thing. each block has the
+  following, base model, color, texture over color, transparency. We will use these 3 properties to build a visual
+  language for the blocks. Note that models may not just be hardcoded geometric shapse but we will import stuff with
+  textures in the future. Don't worry too harda bout that now, basically in these cases, the texture/color will onyl
+  apply to parts of the model, but for hardcode geometric shapes, it will apply to everything.. anyways, build out
+  this visual language for block styling. we will layer on top of it. also can you propose anything else we can add
+  to this language? I want felxibility for introducing new block types
+
+  
+:: TODO
+-pressing escape desselects block pallet, if nothing selecetd in block pallet deselects in edtior
+DONE-level editor block selectionpreview fix pls
+
+-improve frame 0 state computations
+    -we save state -0.5 but then show state 0, but then what happens when we want to change state? do we change from state 0 or -0.5
+    -state after returning from test mode needs to reset back to state 0, or state -0.5 and recompute
+-get grid numbers to show correctly
+
+
+-do some research into building solve
+    -grouping moves?
+    -identify certain types of "moves"
+    -heuristic, is that actually helpful?
+    -identify unwinnable states
+    -identify uintuitive moves
+        -walk into laser path which will simultaneously disable the laser (miht be solver order dependent...)
+
+
+:: TODONE
 
 DONE-level editor
     -a menu on the left to choose from list of blocks, zoomable
@@ -16,21 +68,5 @@ DONE-level editor
 DONE-do potato solver
 DONE-allow block reflection (48 block statse?)
 DONE-during level edit mode, laser should reflect
-
--add rotate level by 90 button in editor
--add ability to place block in 3d in editor (raycast onto existing block mode, and pick Z layer mode)
-
--improve frame 0 state computations
-    -we save state -0.5 but then show state 0, but then what happens when we want to change state? do we change from state 0 or -0.5
-    -state after returning from test mode needs to reset back to state 0, or state -0.5 and recompute
--get grid numbers to show correctly
--level editor block selectionpreview fix pls
-
--do some research into building solve
-    -grouping moves?
-    -identify certain types of "moves"
-    -heuristic, is that actually helpful?
-    -identify unwinnable states
-    -identify uintuitive moves
-        -walk into laser path which will simultaneously disable the laser (miht be solver order dependent...)
-
+DONE-add rotate level by 90 button in editor
+DONE-add ability to place block in 3d in editor (raycast onto existing block mode, and pick Z layer mode)

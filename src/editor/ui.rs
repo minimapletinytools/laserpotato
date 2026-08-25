@@ -18,6 +18,18 @@ pub struct PaletteButton(pub BlockKind);
 pub struct PropertyToggleButton(pub bool); // true = fixed, false = moveable
 
 #[derive(Component)]
+pub struct ZModeToggleButton(pub crate::editor::ZPlacementMode);
+
+#[derive(Component)]
+pub struct ZLayerIncButton;
+
+#[derive(Component)]
+pub struct ZLayerDecButton;
+
+#[derive(Component)]
+pub struct ZLayerLabelText;
+
+#[derive(Component)]
 pub struct InspectorPanel;
 
 #[derive(Component)]
@@ -28,6 +40,18 @@ pub struct RotateCwButton;
 
 #[derive(Component)]
 pub struct RotateCcwButton;
+
+#[derive(Component)]
+pub struct RotateXPosButton;
+
+#[derive(Component)]
+pub struct RotateXNegButton;
+
+#[derive(Component)]
+pub struct RotateYPosButton;
+
+#[derive(Component)]
+pub struct RotateYNegButton;
 
 #[derive(Component)]
 pub struct ReflectXButton;
@@ -313,9 +337,136 @@ pub fn setup_editor_ui(mut commands: Commands) {
                                     });
                             });
 
+                        // Z Placement Mode Selector
+                        sidebar.spawn((
+                            Text::new("Z PLACEMENT"),
+                            TextFont::from_font_size(12.0),
+                            TextColor(TEXT_MUTED),
+                        ));
+
+                        sidebar
+                            .spawn(Node {
+                                width: Val::Percent(100.0),
+                                column_gap: Val::Px(6.0),
+                                ..default()
+                            })
+                            .with_children(|z_mode_row| {
+                                z_mode_row
+                                    .spawn((
+                                        ZModeToggleButton(crate::editor::ZPlacementMode::StackOnTop),
+                                        Button,
+                                        Node {
+                                            flex_grow: 1.0,
+                                            padding: UiRect::axes(Val::Px(4.0), Val::Px(6.0)),
+                                            justify_content: JustifyContent::Center,
+                                            align_items: AlignItems::Center,
+                                            ..default()
+                                        },
+                                        BackgroundColor(BTN_NORMAL),
+                                    ))
+                                    .with_children(|btn| {
+                                        btn.spawn((
+                                            Text::new("Stack Top"),
+                                            TextFont::from_font_size(11.0),
+                                            TextColor(TEXT_PRIMARY),
+                                        ));
+                                    });
+
+                                z_mode_row
+                                    .spawn((
+                                        ZModeToggleButton(crate::editor::ZPlacementMode::FixedLayer),
+                                        Button,
+                                        Node {
+                                            flex_grow: 1.0,
+                                            padding: UiRect::axes(Val::Px(4.0), Val::Px(6.0)),
+                                            justify_content: JustifyContent::Center,
+                                            align_items: AlignItems::Center,
+                                            ..default()
+                                        },
+                                        BackgroundColor(BTN_NORMAL),
+                                    ))
+                                    .with_children(|btn| {
+                                        btn.spawn((
+                                            Text::new("Grid Layer"),
+                                            TextFont::from_font_size(11.0),
+                                            TextColor(TEXT_PRIMARY),
+                                        ));
+                                    });
+                            });
+
+                        // Layer Level Stepper ([-] Layer Z: 0 [+])
+                        sidebar
+                            .spawn(Node {
+                                width: Val::Percent(100.0),
+                                column_gap: Val::Px(6.0),
+                                align_items: AlignItems::Center,
+                                ..default()
+                            })
+                            .with_children(|layer_row| {
+                                layer_row
+                                    .spawn((
+                                        ZLayerDecButton,
+                                        Button,
+                                        Node {
+                                            width: Val::Px(30.0),
+                                            padding: UiRect::axes(Val::Px(4.0), Val::Px(4.0)),
+                                            justify_content: JustifyContent::Center,
+                                            align_items: AlignItems::Center,
+                                            ..default()
+                                        },
+                                        BackgroundColor(BTN_NORMAL),
+                                    ))
+                                    .with_children(|btn| {
+                                        btn.spawn((
+                                            Text::new("-"),
+                                            TextFont::from_font_size(13.0),
+                                            TextColor(TEXT_PRIMARY),
+                                        ));
+                                    });
+
+                                layer_row
+                                    .spawn((
+                                        Node {
+                                            flex_grow: 1.0,
+                                            justify_content: JustifyContent::Center,
+                                            align_items: AlignItems::Center,
+                                            ..default()
+                                        },
+                                    ))
+                                    .with_children(|cell| {
+                                        cell.spawn((
+                                            ZLayerLabelText,
+                                            Text::new("Layer Z: 0"),
+                                            TextFont::from_font_size(12.0),
+                                            TextColor(TEXT_PRIMARY),
+                                        ));
+                                    });
+
+                                layer_row
+                                    .spawn((
+                                        ZLayerIncButton,
+                                        Button,
+                                        Node {
+                                            width: Val::Px(30.0),
+                                            padding: UiRect::axes(Val::Px(4.0), Val::Px(4.0)),
+                                            justify_content: JustifyContent::Center,
+                                            align_items: AlignItems::Center,
+                                            ..default()
+                                        },
+                                        BackgroundColor(BTN_NORMAL),
+                                    ))
+                                    .with_children(|btn| {
+                                        btn.spawn((
+                                            Text::new("+"),
+                                            TextFont::from_font_size(13.0),
+                                            TextColor(TEXT_PRIMARY),
+                                        ));
+                                    });
+                            });
+
                         // Instructions / shortcuts hint
                         sidebar.spawn((
-                            Text::new("Controls:\n- L-Click: Place / Select\n- Drag: Move Block\n- R-Click: Delete Block\n- Q / E: Rotate View 90 deg\n- WASD: Pan Camera\n- Scroll: Zoom In/Out"),
+                            Text::new("Controls:\n- L-Click: Place / Select\n- Drag: Move Block\n- R-Click: Delete Block\n- Tab: Toggle Z Mode\n- PgUp/PgDn: Change Z\n- Q / E: Rotate View 90 deg\n- WASD: Pan Camera\n- Scroll: Zoom In/Out"),
                             TextFont::from_font_size(11.0),
                             TextColor(TEXT_MUTED),
                         ));
@@ -350,7 +501,105 @@ pub fn setup_editor_ui(mut commands: Commands) {
                             TextColor(TEXT_MUTED),
                         ));
 
-                        // Rotation Controls
+                        // 3D Pitch (World X-axis tilt)
+                        inspector
+                            .spawn(Node {
+                                width: Val::Percent(100.0),
+                                column_gap: Val::Px(6.0),
+                                ..default()
+                            })
+                            .with_children(|row| {
+                                row.spawn((
+                                    RotateXPosButton,
+                                    Button,
+                                    Node {
+                                        flex_grow: 1.0,
+                                        padding: UiRect::axes(Val::Px(6.0), Val::Px(6.0)),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
+                                        ..default()
+                                    },
+                                    BackgroundColor(BTN_NORMAL),
+                                ))
+                                .with_children(|btn| {
+                                    btn.spawn((
+                                        Text::new("Pitch +X"),
+                                        TextFont::from_font_size(11.0),
+                                        TextColor(TEXT_PRIMARY),
+                                    ));
+                                });
+
+                                row.spawn((
+                                    RotateXNegButton,
+                                    Button,
+                                    Node {
+                                        flex_grow: 1.0,
+                                        padding: UiRect::axes(Val::Px(6.0), Val::Px(6.0)),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
+                                        ..default()
+                                    },
+                                    BackgroundColor(BTN_NORMAL),
+                                ))
+                                .with_children(|btn| {
+                                    btn.spawn((
+                                        Text::new("Pitch -X"),
+                                        TextFont::from_font_size(11.0),
+                                        TextColor(TEXT_PRIMARY),
+                                    ));
+                                });
+                            });
+
+                        // 3D Roll (World Y-axis tilt)
+                        inspector
+                            .spawn(Node {
+                                width: Val::Percent(100.0),
+                                column_gap: Val::Px(6.0),
+                                ..default()
+                            })
+                            .with_children(|row| {
+                                row.spawn((
+                                    RotateYPosButton,
+                                    Button,
+                                    Node {
+                                        flex_grow: 1.0,
+                                        padding: UiRect::axes(Val::Px(6.0), Val::Px(6.0)),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
+                                        ..default()
+                                    },
+                                    BackgroundColor(BTN_NORMAL),
+                                ))
+                                .with_children(|btn| {
+                                    btn.spawn((
+                                        Text::new("Roll +Y"),
+                                        TextFont::from_font_size(11.0),
+                                        TextColor(TEXT_PRIMARY),
+                                    ));
+                                });
+
+                                row.spawn((
+                                    RotateYNegButton,
+                                    Button,
+                                    Node {
+                                        flex_grow: 1.0,
+                                        padding: UiRect::axes(Val::Px(6.0), Val::Px(6.0)),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
+                                        ..default()
+                                    },
+                                    BackgroundColor(BTN_NORMAL),
+                                ))
+                                .with_children(|btn| {
+                                    btn.spawn((
+                                        Text::new("Roll -Y"),
+                                        TextFont::from_font_size(11.0),
+                                        TextColor(TEXT_PRIMARY),
+                                    ));
+                                });
+                            });
+
+                        // 2D Rotation Controls (Yaw / Z-axis)
                         inspector
                             .spawn(Node {
                                 width: Val::Percent(100.0),
@@ -372,7 +621,7 @@ pub fn setup_editor_ui(mut commands: Commands) {
                                 ))
                                 .with_children(|btn| {
                                     btn.spawn((
-                                        Text::new("CCW (Z+90)"),
+                                        Text::new("Rot Z CCW"),
                                         TextFont::from_font_size(11.0),
                                         TextColor(TEXT_PRIMARY),
                                     ));
@@ -392,7 +641,7 @@ pub fn setup_editor_ui(mut commands: Commands) {
                                 ))
                                 .with_children(|btn| {
                                     btn.spawn((
-                                        Text::new("CW [Key: R]"),
+                                        Text::new("Rot Z [Key: R]"),
                                         TextFont::from_font_size(11.0),
                                         TextColor(TEXT_PRIMARY),
                                     ));
@@ -549,13 +798,15 @@ pub fn update_editor_ui_system(
     editor: Res<EditorState>,
     game: Res<crate::GameState>,
     mut root_query: Query<&mut Visibility, With<EditorRootUi>>,
-    mut palette_query: Query<(&PaletteButton, &mut BackgroundColor), Without<PropertyToggleButton>>,
-    mut prop_query: Query<(&PropertyToggleButton, &mut BackgroundColor), Without<PaletteButton>>,
-    mut inspector_text_query: Query<&mut Text, (With<InspectorText>, Without<SolverStatusBadge>, Without<ToastNotificationText>, Without<PalettePreviewLabel>)>,
-    mut solver_badge_query: Query<(&mut Text, &mut TextColor), (With<SolverStatusBadge>, Without<InspectorText>, Without<ToastNotificationText>, Without<PalettePreviewLabel>)>,
-    mut toast_query: Query<&mut Text, (With<ToastNotificationText>, Without<InspectorText>, Without<SolverStatusBadge>, Without<PalettePreviewLabel>)>,
-    mut preview_label_query: Query<&mut Text, (With<PalettePreviewLabel>, Without<InspectorText>, Without<SolverStatusBadge>, Without<ToastNotificationText>)>,
-    mut action_btns_query: Query<(&ActionButton, &mut BackgroundColor), (Without<PaletteButton>, Without<PropertyToggleButton>)>,
+    mut palette_query: Query<(&PaletteButton, &mut BackgroundColor), (Without<PropertyToggleButton>, Without<ZModeToggleButton>)>,
+    mut prop_query: Query<(&PropertyToggleButton, &mut BackgroundColor), (Without<PaletteButton>, Without<ZModeToggleButton>)>,
+    mut z_mode_query: Query<(&ZModeToggleButton, &mut BackgroundColor), (Without<PaletteButton>, Without<PropertyToggleButton>, Without<ActionButton>)>,
+    mut z_layer_query: Query<&mut Text, (With<ZLayerLabelText>, Without<InspectorText>, Without<SolverStatusBadge>, Without<ToastNotificationText>, Without<PalettePreviewLabel>)>,
+    mut inspector_text_query: Query<&mut Text, (With<InspectorText>, Without<SolverStatusBadge>, Without<ToastNotificationText>, Without<PalettePreviewLabel>, Without<ZLayerLabelText>)>,
+    mut solver_badge_query: Query<(&mut Text, &mut TextColor), (With<SolverStatusBadge>, Without<InspectorText>, Without<ToastNotificationText>, Without<PalettePreviewLabel>, Without<ZLayerLabelText>)>,
+    mut toast_query: Query<&mut Text, (With<ToastNotificationText>, Without<InspectorText>, Without<SolverStatusBadge>, Without<PalettePreviewLabel>, Without<ZLayerLabelText>)>,
+    mut preview_label_query: Query<&mut Text, (With<PalettePreviewLabel>, Without<InspectorText>, Without<SolverStatusBadge>, Without<ToastNotificationText>, Without<ZLayerLabelText>)>,
+    mut action_btns_query: Query<(&ActionButton, &mut BackgroundColor), (Without<PaletteButton>, Without<PropertyToggleButton>, Without<ZModeToggleButton>)>,
 ) {
     // Show UI only in Editor mode
     for mut vis in &mut root_query {
@@ -624,7 +875,21 @@ pub fn update_editor_ui_system(
         }
     }
 
-    // 4. Update Inspector details
+    // 4. Highlight active Z placement mode button
+    for (z_btn, mut bg) in &mut z_mode_query {
+        bg.0 = if z_btn.0 == editor.z_mode {
+            BTN_ACTIVE
+        } else {
+            BTN_NORMAL
+        };
+    }
+
+    // 5. Update Z layer label text
+    for mut text in &mut z_layer_query {
+        text.0 = format!("Layer Z: {}", editor.current_z);
+    }
+
+    // 6. Update Inspector details
     for mut text in &mut inspector_text_query {
         if let Some(body_id) = editor.selected_body_id {
             if let Some(body) = game.engine.world.body(body_id) {
