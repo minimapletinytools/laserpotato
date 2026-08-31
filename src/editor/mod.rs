@@ -65,8 +65,8 @@ pub enum ZPlacementMode {
 
 #[derive(Resource)]
 pub struct EditorState {
-    /// Currently selected base block kind from palette.
-    pub selected_kind: BlockKind,
+    /// Currently selected base block kind from palette (None = Select-Only mode).
+    pub selected_kind: Option<BlockKind>,
     /// Property toggle: true = stationary (fixed), false = moveable.
     pub is_fixed: bool,
     /// Active Z placement mode (StackOnTop vs FixedLayer).
@@ -98,7 +98,7 @@ pub struct EditorState {
 impl Default for EditorState {
     fn default() -> Self {
         Self {
-            selected_kind: BlockKind::Mirror,
+            selected_kind: Some(BlockKind::Mirror),
             is_fixed: false,
             z_mode: ZPlacementMode::StackOnTop,
             current_z: 0,
@@ -184,12 +184,17 @@ pub fn update_palette_3d_preview(
             *vis = Visibility::Hidden;
             continue;
         }
+
+        let Some(selected_kind) = editor.selected_kind else {
+            *vis = Visibility::Hidden;
+            continue;
+        };
         *vis = Visibility::Visible;
 
         // Rotate slowly around Y
         transform.rotate_local_y(1.2 * time.delta_secs());
 
-        let (can_moveable, can_fixed) = editor.allowed_fixed_state(editor.selected_kind);
+        let (can_moveable, can_fixed) = editor.allowed_fixed_state(selected_kind);
         let is_moveable = if !can_moveable {
             false
         } else if !can_fixed {
@@ -198,7 +203,7 @@ pub fn update_palette_3d_preview(
             !editor.is_fixed
         };
 
-        let (target_mesh, target_mat) = match editor.selected_kind {
+        let (target_mesh, target_mat) = match selected_kind {
             BlockKind::Player => (render_assets.player_mesh.clone(), render_assets.player_mat.clone()),
             BlockKind::Goal => (render_assets.pyramid_mesh.clone(), render_assets.goal_mat.clone()),
             BlockKind::Wall => (render_assets.cube_mesh.clone(), render_assets.fixed_wall_mat.clone()),
@@ -478,7 +483,28 @@ fn editor_grid_interaction_system(
 
     // Left Click: Place or Select & Start Dragging
     if mouse_button.just_pressed(MouseButton::Left) {
-        if editor.z_mode == ZPlacementMode::FixedLayer {
+        if editor.selected_kind.is_none() {
+            // Select-Only mode: clicking always selects the clicked body, or deselects if clicking empty space
+            let hit_id = if editor.z_mode == ZPlacementMode::FixedLayer {
+                game.engine.world.body_at(cell_pos).map(|b| b.id)
+            } else {
+                clicked_body_id
+            };
+
+            if let Some(body_id) = hit_id {
+                if let Some(body) = game.engine.world.body(body_id) {
+                    let kind = body.kind;
+                    let anchor = body.anchor;
+                    editor.selected_body_id = Some(body_id);
+                    editor.dragging_body_id = Some(body_id);
+                    editor.toast(format!("Selected {:?} at ({}, {}, {})", kind, anchor.x, anchor.y, anchor.z));
+                }
+            } else {
+                editor.selected_body_id = None;
+                editor.dragging_body_id = None;
+                editor.toast("Deselected block.");
+            }
+        } else if editor.z_mode == ZPlacementMode::FixedLayer {
             if let Some(body) = game.engine.world.body_at(cell_pos) {
                 let body_id = body.id;
                 let kind = body.kind;
@@ -487,7 +513,7 @@ fn editor_grid_interaction_system(
                 editor.toast(format!("Selected {:?} at ({}, {}, {})", kind, cell_pos.x, cell_pos.y, cell_pos.z));
             } else {
                 // Place block at layer Z
-                let kind = editor.selected_kind;
+                let kind = editor.selected_kind.unwrap();
                 let (can_moveable, can_fixed) = editor.allowed_fixed_state(kind);
                 let is_fixed = if !can_moveable { true } else if !can_fixed { false } else { editor.is_fixed };
 
@@ -519,7 +545,7 @@ fn editor_grid_interaction_system(
             }
         } else {
             // StackOnTop mode:
-            let kind = editor.selected_kind;
+            let kind = editor.selected_kind.unwrap();
             let (can_moveable, can_fixed) = editor.allowed_fixed_state(kind);
             let is_fixed = if !can_moveable { true } else if !can_fixed { false } else { editor.is_fixed };
 
@@ -654,28 +680,37 @@ fn editor_button_clicks_system(
             continue;
         }
 
-        // 1. Palette block selection
+        // 1. Palette block selection (clicking active tool toggles off to Select-Only mode)
         if let Some(btn) = palette_btn {
-            editor.selected_kind = btn.0;
-            let (can_moveable, can_fixed) = editor.allowed_fixed_state(btn.0);
-            if !can_moveable {
-                editor.is_fixed = true;
-            } else if !can_fixed {
-                editor.is_fixed = false;
+            if editor.selected_kind == Some(btn.0) {
+                editor.selected_kind = None;
+                editor.toast("Select-Only mode (Palette deselected) [Esc].");
+            } else {
+                editor.selected_kind = Some(btn.0);
+                let (can_moveable, can_fixed) = editor.allowed_fixed_state(btn.0);
+                if !can_moveable {
+                    editor.is_fixed = true;
+                } else if !can_fixed {
+                    editor.is_fixed = false;
+                }
+                let label = format!("Selected tool: {:?}", btn.0);
+                editor.toast(label);
             }
-            let label = format!("Selected tool: {:?}", btn.0);
-            editor.toast(label);
         }
 
         // 2. Property toggle (Moveable vs Stationary)
         if let Some(btn) = prop_btn {
-            let (can_moveable, can_fixed) = editor.allowed_fixed_state(editor.selected_kind);
-            if btn.0 && can_fixed {
-                editor.is_fixed = true;
-                editor.toast("Tool property: Stationary (Fixed)");
-            } else if !btn.0 && can_moveable {
-                editor.is_fixed = false;
-                editor.toast("Tool property: Moveable");
+            if let Some(kind) = editor.selected_kind {
+                let (can_moveable, can_fixed) = editor.allowed_fixed_state(kind);
+                if btn.0 && can_fixed {
+                    editor.is_fixed = true;
+                    editor.toast("Tool property: Stationary (Fixed)");
+                } else if !btn.0 && can_moveable {
+                    editor.is_fixed = false;
+                    editor.toast("Tool property: Moveable");
+                }
+            } else {
+                editor.toast("Select a block tool from the palette first.");
             }
         }
 
@@ -1009,31 +1044,44 @@ fn draw_editor_selection_gizmos(
 
     // 1. Draw hovered cell highlight outline (full 3D box)
     if let Some(cell) = editor.hovered_cell {
-        let x = cell.x as f32;
-        let y = cell.z as f32;
-        let z = -cell.y as f32;
-        let y0 = y - 0.48;
-        let y1 = y + 0.48;
-        let d = 0.48;
-        let col = Color::srgba(1.0, 0.9, 0.2, 0.85);
+        let is_occupied = game.engine.world.body_at(cell).is_some();
+        let show_gizmo = if editor.selected_kind.is_some() {
+            true
+        } else {
+            is_occupied
+        };
 
-        // Bottom square
-        gizmos.line(Vec3::new(x - d, y0, z - d), Vec3::new(x + d, y0, z - d), col);
-        gizmos.line(Vec3::new(x + d, y0, z - d), Vec3::new(x + d, y0, z + d), col);
-        gizmos.line(Vec3::new(x + d, y0, z + d), Vec3::new(x - d, y0, z + d), col);
-        gizmos.line(Vec3::new(x - d, y0, z + d), Vec3::new(x - d, y0, z - d), col);
+        if show_gizmo {
+            let x = cell.x as f32;
+            let y = cell.z as f32;
+            let z = -cell.y as f32;
+            let y0 = y - 0.48;
+            let y1 = y + 0.48;
+            let d = 0.48;
+            let col = if editor.selected_kind.is_some() {
+                Color::srgba(1.0, 0.9, 0.2, 0.85)
+            } else {
+                Color::srgba(0.8, 0.9, 1.0, 0.65)
+            };
 
-        // Top square
-        gizmos.line(Vec3::new(x - d, y1, z - d), Vec3::new(x + d, y1, z - d), col);
-        gizmos.line(Vec3::new(x + d, y1, z - d), Vec3::new(x + d, y1, z + d), col);
-        gizmos.line(Vec3::new(x + d, y1, z + d), Vec3::new(x - d, y1, z + d), col);
-        gizmos.line(Vec3::new(x - d, y1, z + d), Vec3::new(x - d, y1, z - d), col);
+            // Bottom square
+            gizmos.line(Vec3::new(x - d, y0, z - d), Vec3::new(x + d, y0, z - d), col);
+            gizmos.line(Vec3::new(x + d, y0, z - d), Vec3::new(x + d, y0, z + d), col);
+            gizmos.line(Vec3::new(x + d, y0, z + d), Vec3::new(x - d, y0, z + d), col);
+            gizmos.line(Vec3::new(x - d, y0, z + d), Vec3::new(x - d, y0, z - d), col);
 
-        // Vertical edges
-        gizmos.line(Vec3::new(x - d, y0, z - d), Vec3::new(x - d, y1, z - d), col);
-        gizmos.line(Vec3::new(x + d, y0, z - d), Vec3::new(x + d, y1, z - d), col);
-        gizmos.line(Vec3::new(x + d, y0, z + d), Vec3::new(x + d, y1, z + d), col);
-        gizmos.line(Vec3::new(x - d, y0, z + d), Vec3::new(x - d, y1, z + d), col);
+            // Top square
+            gizmos.line(Vec3::new(x - d, y1, z - d), Vec3::new(x + d, y1, z - d), col);
+            gizmos.line(Vec3::new(x + d, y1, z - d), Vec3::new(x + d, y1, z + d), col);
+            gizmos.line(Vec3::new(x + d, y1, z + d), Vec3::new(x - d, y1, z + d), col);
+            gizmos.line(Vec3::new(x - d, y1, z + d), Vec3::new(x - d, y1, z - d), col);
+
+            // Vertical edges
+            gizmos.line(Vec3::new(x - d, y0, z - d), Vec3::new(x - d, y1, z - d), col);
+            gizmos.line(Vec3::new(x + d, y0, z - d), Vec3::new(x + d, y1, z - d), col);
+            gizmos.line(Vec3::new(x + d, y0, z + d), Vec3::new(x + d, y1, z + d), col);
+            gizmos.line(Vec3::new(x - d, y0, z + d), Vec3::new(x - d, y1, z + d), col);
+        }
     }
 
     // 2. Draw selected body bounding box
@@ -1082,7 +1130,7 @@ fn editor_keyboard_shortcuts_system(
     mut game: ResMut<GameState>,
     mut playback: ResMut<crate::PlaybackState>,
 ) {
-    // Return to Editor from Playtest or Playback mode with Escape
+    // Return to Editor from Playtest or Playback mode with Escape, or clear selection / tool
     if keys.just_pressed(KeyCode::Escape) {
         if *app_mode.get() != AppMode::Editor {
             if let Some(backup) = editor.backup_world.take() {
@@ -1092,6 +1140,9 @@ fn editor_keyboard_shortcuts_system(
             next_mode.set(AppMode::Editor);
             editor.toast("Returned to Level Editor.");
             return;
+        } else if editor.selected_kind.is_some() {
+            editor.selected_kind = None;
+            editor.toast("Select-Only mode (Palette tool deselected) [Esc].");
         } else if editor.selected_body_id.is_some() {
             editor.selected_body_id = None;
             editor.toast("Deselected block.");
@@ -1100,6 +1151,29 @@ fn editor_keyboard_shortcuts_system(
 
     if *app_mode.get() != AppMode::Editor {
         return;
+    }
+
+    // Palette selection hotkeys (when not transforming a selected block)
+    if editor.selected_body_id.is_none() {
+        if keys.just_pressed(KeyCode::KeyP) {
+            editor.selected_kind = Some(BlockKind::Player);
+            editor.toast("Selected tool: Player [Key: P]");
+        } else if keys.just_pressed(KeyCode::KeyM) {
+            editor.selected_kind = Some(BlockKind::Mirror);
+            editor.toast("Selected tool: Mirror [Key: M]");
+        } else if keys.just_pressed(KeyCode::KeyL) {
+            editor.selected_kind = Some(BlockKind::LaserSource);
+            editor.toast("Selected tool: Laser Source [Key: L]");
+        } else if keys.just_pressed(KeyCode::KeyC) {
+            editor.selected_kind = Some(BlockKind::Pushable);
+            editor.toast("Selected tool: Pushable Crate [Key: C]");
+        } else if keys.just_pressed(KeyCode::KeyW) {
+            editor.selected_kind = Some(BlockKind::Wall);
+            editor.toast("Selected tool: Wall [Key: W]");
+        } else if keys.just_pressed(KeyCode::KeyG) {
+            editor.selected_kind = Some(BlockKind::Goal);
+            editor.toast("Selected tool: Goal Pyramid [Key: G]");
+        }
     }
 
     // Toggle Z placement mode with Tab
@@ -1206,5 +1280,18 @@ mod tests {
             }
         }
         assert_eq!(max_z_ignore_w2 + 1, 1);
+    }
+
+    #[test]
+    fn select_only_mode_state_test() {
+        let mut editor = EditorState::default();
+        assert_eq!(editor.selected_kind, Some(BlockKind::Mirror));
+
+        // Deselecting enters select-only mode
+        editor.selected_kind = None;
+        assert!(editor.selected_kind.is_none());
+
+        let allowed = editor.allowed_fixed_state(BlockKind::Mirror);
+        assert_eq!(allowed, (true, true));
     }
 }

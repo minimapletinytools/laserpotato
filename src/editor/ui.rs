@@ -466,7 +466,7 @@ pub fn setup_editor_ui(mut commands: Commands) {
 
                         // Instructions / shortcuts hint
                         sidebar.spawn((
-                            Text::new("Controls:\n- L-Click: Place / Select\n- Drag: Move Block\n- R-Click: Delete Block\n- Tab: Toggle Z Mode\n- PgUp/PgDn: Change Z\n- Q / E: Rotate View 90 deg\n- WASD: Pan Camera\n- Scroll: Zoom In/Out"),
+                            Text::new("Controls:\n- Esc: Select Mode / Deselect\n- L-Click: Place / Select\n- Drag: Move Block\n- R-Click: Delete Block\n- Tab: Toggle Z Mode\n- PgUp/PgDn: Change Z\n- Q / E: Rotate View 90 deg\n- WASD: Pan Camera\n- Scroll: Zoom In/Out"),
                             TextFont::from_font_size(11.0),
                             TextColor(TEXT_MUTED),
                         ));
@@ -823,29 +823,33 @@ pub fn update_editor_ui_system(
 
     // 1. Update Palette 3D Preview Label
     for mut text in &mut preview_label_query {
-        let (can_moveable, can_fixed) = editor.allowed_fixed_state(editor.selected_kind);
-        let is_fixed = if !can_moveable {
-            true
-        } else if !can_fixed {
-            false
+        if let Some(kind) = editor.selected_kind {
+            let (can_moveable, can_fixed) = editor.allowed_fixed_state(kind);
+            let is_fixed = if !can_moveable {
+                true
+            } else if !can_fixed {
+                false
+            } else {
+                editor.is_fixed
+            };
+            let prop_str = if is_fixed { "Stationary" } else { "Moveable" };
+            let icon_name = match kind {
+                BlockKind::Player => "Player".into(),
+                BlockKind::Mirror => format!("Mirror ({})", prop_str),
+                BlockKind::LaserSource => format!("Laser Source ({})", prop_str),
+                BlockKind::Pushable => format!("Pushable Crate ({})", prop_str),
+                BlockKind::Wall => "Wall (Stationary)".into(),
+                BlockKind::Goal => "Goal Pyramid (Stationary)".into(),
+            };
+            text.0 = icon_name;
         } else {
-            editor.is_fixed
-        };
-        let prop_str = if is_fixed { "Stationary" } else { "Moveable" };
-        let icon_name = match editor.selected_kind {
-            BlockKind::Player => "Player".into(),
-            BlockKind::Mirror => format!("Mirror ({})", prop_str),
-            BlockKind::LaserSource => format!("Laser Source ({})", prop_str),
-            BlockKind::Pushable => format!("Pushable Crate ({})", prop_str),
-            BlockKind::Wall => "Wall (Stationary)".into(),
-            BlockKind::Goal => "Goal Pyramid (Stationary)".into(),
-        };
-        text.0 = icon_name;
+            text.0 = "Select-Only Mode [Esc]".into();
+        }
     }
 
     // 2. Highlight active palette button
     for (palette_btn, mut bg) in &mut palette_query {
-        bg.0 = if palette_btn.0 == editor.selected_kind {
+        bg.0 = if Some(palette_btn.0) == editor.selected_kind {
             BTN_ACTIVE
         } else {
             BTN_NORMAL
@@ -853,25 +857,31 @@ pub fn update_editor_ui_system(
     }
 
     // 3. Highlight active property button & disable invalid ones
-    let (can_moveable, can_fixed) = editor.allowed_fixed_state(editor.selected_kind);
-    for (prop_btn, mut bg) in &mut prop_query {
-        let is_fixed_btn = prop_btn.0;
-        if is_fixed_btn {
-            if !can_fixed {
-                bg.0 = BTN_DISABLED;
-            } else if editor.is_fixed {
-                bg.0 = BTN_ACTIVE;
+    if let Some(kind) = editor.selected_kind {
+        let (can_moveable, can_fixed) = editor.allowed_fixed_state(kind);
+        for (prop_btn, mut bg) in &mut prop_query {
+            let is_fixed_btn = prop_btn.0;
+            if is_fixed_btn {
+                if !can_fixed {
+                    bg.0 = BTN_DISABLED;
+                } else if editor.is_fixed {
+                    bg.0 = BTN_ACTIVE;
+                } else {
+                    bg.0 = BTN_NORMAL;
+                }
             } else {
-                bg.0 = BTN_NORMAL;
+                if !can_moveable {
+                    bg.0 = BTN_DISABLED;
+                } else if !editor.is_fixed {
+                    bg.0 = BTN_ACTIVE;
+                } else {
+                    bg.0 = BTN_NORMAL;
+                }
             }
-        } else {
-            if !can_moveable {
-                bg.0 = BTN_DISABLED;
-            } else if !editor.is_fixed {
-                bg.0 = BTN_ACTIVE;
-            } else {
-                bg.0 = BTN_NORMAL;
-            }
+        }
+    } else {
+        for (_, mut bg) in &mut prop_query {
+            bg.0 = BTN_NORMAL;
         }
     }
 
