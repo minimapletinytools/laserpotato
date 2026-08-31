@@ -43,15 +43,19 @@ pub fn evaluate(world: &World, laser_segments: &[LaserSegment], kind: HeuristicK
         return 0;
     }
 
-    // 2. Check if laser is already striking the goal
+    // 2. Check if all goals are already struck by lasers
+    let mut hit_goals = std::collections::HashSet::new();
     for segment in laser_segments {
         if let Some(hit) = &segment.hit {
             if let Some(body) = world.body(hit.body_id) {
                 if body.kind == BlockKind::Goal {
-                    return 0;
+                    hit_goals.insert(body.id);
                 }
             }
         }
+    }
+    if hit_goals.len() == goal_positions.len() {
+        return 0;
     }
 
     // 3. Laser-to-Goal distance: find minimum distance from any ray tip to any goal

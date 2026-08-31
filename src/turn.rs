@@ -441,16 +441,19 @@ impl TurnEngine {
 
 /// Evaluates if the current state is a Win, Loss, or InProgress.
 /// Striking the Player takes precedence as a Loss.
+/// Winning requires ALL Goal pyramids in the world to be struck by laser beams.
 fn evaluate_outcome(world: &World, laser_state: &[LaserSegment]) -> GameOutcome {
     let mut hit_player = false;
-    let mut hit_goal = false;
+    let mut hit_goals = std::collections::HashSet::new();
 
     for segment in laser_state {
         if let Some(hit) = &segment.hit {
             if let Some(body) = world.body(hit.body_id) {
                 match body.kind {
                     BlockKind::Player => hit_player = true,
-                    BlockKind::Goal => hit_goal = true,
+                    BlockKind::Goal => {
+                        hit_goals.insert(body.id);
+                    }
                     _ => {}
                 }
             }
@@ -459,10 +462,17 @@ fn evaluate_outcome(world: &World, laser_state: &[LaserSegment]) -> GameOutcome 
 
     if hit_player {
         GameOutcome::Lost
-    } else if hit_goal {
-        GameOutcome::Won
     } else {
-        GameOutcome::InProgress
+        let total_goals = world
+            .bodies()
+            .iter()
+            .filter(|b| b.kind == BlockKind::Goal)
+            .count();
+        if total_goals > 0 && hit_goals.len() == total_goals {
+            GameOutcome::Won
+        } else {
+            GameOutcome::InProgress
+        }
     }
 }
 
@@ -826,5 +836,31 @@ mod tests {
         assert!(engine.validation_error.is_none());
         assert_eq!(engine.laser_state.len(), 2, "Lasers must be computed on Frame 0");
         assert_eq!(engine.outcome, GameOutcome::InProgress);
+    }
+
+    #[test]
+    fn multi_goal_partial_and_full_win_test() {
+        let mut world = World::new();
+        world.spawn(BlockKind::Player, IVec3::ZERO, vec![IVec3::ZERO]);
+
+        // Laser 1 shooting North (+Y) at X = 2
+        world.spawn(BlockKind::LaserSource, IVec3::new(2, 0, 0), vec![IVec3::ZERO]);
+        // Goal 1 at (2, 4, 0)
+        let _g1 = world.spawn(BlockKind::Goal, IVec3::new(2, 4, 0), vec![IVec3::ZERO]);
+
+        // Goal 2 at (5, 4, 0) — unhit initially
+        let _g2 = world.spawn(BlockKind::Goal, IVec3::new(5, 4, 0), vec![IVec3::ZERO]);
+
+        let engine = TurnEngine::new(world.clone());
+        // Only 1 of 2 goals is hit -> must be InProgress, NOT Won
+        assert_eq!(engine.outcome, GameOutcome::InProgress);
+        assert!(!engine.is_won());
+
+        // Now add a second laser shooting North at X = 5
+        world.spawn(BlockKind::LaserSource, IVec3::new(5, 0, 0), vec![IVec3::ZERO]);
+        let engine2 = TurnEngine::new(world);
+        // Both goals hit -> Won!
+        assert_eq!(engine2.outcome, GameOutcome::Won);
+        assert!(engine2.is_won());
     }
 }

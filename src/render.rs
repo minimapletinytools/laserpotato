@@ -169,10 +169,10 @@ pub fn setup_render_assets(
             ..default()
         }),
         moveable_glass_mat: materials.add(StandardMaterial {
-            base_color: Color::srgba(0.65, 0.88, 1.0, 0.28),
+            base_color: Color::srgba(0.18, 0.60, 1.0, 0.35),
             alpha_mode: AlphaMode::Blend,
             perceptual_roughness: 0.05,
-            emissive: LinearRgba::new(0.12, 0.18, 0.30, 1.0),
+            emissive: LinearRgba::new(0.15, 0.50, 1.30, 1.0),
             double_sided: true,
             ..default()
         }),
@@ -187,14 +187,14 @@ pub fn setup_render_assets(
 
         // Stationary / Immovable Blocks (Sharp hard corners, darker shade, solid smooth PBR)
         fixed_wall_mat: materials.add(StandardMaterial {
-            base_color: Color::srgb(0.22, 0.24, 0.28), // Dark charcoal slate
+            base_color: Color::srgb(0.14, 0.15, 0.18), // Darker charcoal slate
             perceptual_roughness: 0.85,
             cull_mode: None,
             double_sided: true,
             ..default()
         }),
         floor_mat: materials.add(StandardMaterial {
-            base_color: Color::srgb(0.28, 0.31, 0.35), // Smooth muted slate grey
+            base_color: Color::srgb(0.18, 0.20, 0.24), // Darker muted slate grey
             perceptual_roughness: 0.85,
             double_sided: true,
             ..default()
@@ -223,9 +223,10 @@ pub fn setup_render_assets(
             ..default()
         }),
         fixed_glass_mat: materials.add(StandardMaterial {
-            base_color: Color::srgba(0.25, 0.28, 0.32, 0.45), // Darker translucent smoked glass
+            base_color: Color::srgba(0.10, 0.20, 0.40, 0.50), // Deeper translucent dark blue glass
             alpha_mode: AlphaMode::Blend,
             perceptual_roughness: 0.15,
+            emissive: LinearRgba::new(0.04, 0.08, 0.20, 1.0),
             double_sided: true,
             ..default()
         }),
@@ -266,12 +267,12 @@ pub fn setup_render_assets(
             ..default()
         }),
 
-        // Goal Victory
+        // Goal Victory (Soft radiant crystal glow)
         goal_won_mat: materials.add(StandardMaterial {
-            base_color: Color::srgb(0.3, 1.0, 0.8),
-            metallic: 0.8,
-            perceptual_roughness: 0.1,
-            emissive: LinearRgba::new(20.0, 15.0, 3.0, 1.0),
+            base_color: Color::srgb(0.25, 0.95, 0.75),
+            metallic: 0.7,
+            perceptual_roughness: 0.15,
+            emissive: LinearRgba::new(1.8, 1.4, 0.5, 1.0),
             double_sided: true,
             ..default()
         }),
@@ -882,6 +883,13 @@ pub fn sync_bodies(
     let mut seen = std::collections::HashSet::new();
     let mut to_despawn = Vec::new();
 
+    let hit_body_ids: std::collections::HashSet<BodyId> = game
+        .engine
+        .laser_state
+        .iter()
+        .filter_map(|seg| seg.hit.as_ref().map(|h| h.body_id))
+        .collect();
+
     // Update existing entities (position, rotation, mesh, and dynamic goal material).
     for (entity, link, mut transform, mut mesh_handle, mut mat_handle) in &mut query {
         if let Some(body) = world.body(link.0) {
@@ -901,13 +909,14 @@ pub fn sync_bodies(
                     mat_handle.0 = if is_moveable { assets.moveable_glass_mat.clone() } else { assets.fixed_glass_mat.clone() };
                 }
                 BlockKind::Goal => {
-                    if game.engine.is_won() {
-                        mat_handle.0 = assets.goal_won_mat.clone();
+                    let is_hit = hit_body_ids.contains(&body.id);
+                    mat_handle.0 = if is_hit {
+                        assets.goal_won_mat.clone()
                     } else if is_moveable {
-                        mat_handle.0 = assets.moveable_goal_mat.clone();
+                        assets.moveable_goal_mat.clone()
                     } else {
-                        mat_handle.0 = assets.goal_mat.clone();
-                    }
+                        assets.goal_mat.clone()
+                    };
                     mesh_handle.0 = if is_moveable { assets.rounded_pyramid_mesh.clone() } else { assets.pyramid_mesh.clone() };
                 }
                 BlockKind::Player => {
@@ -1005,7 +1014,8 @@ pub fn sync_bodies(
                 (assets.player_mesh.clone(), mat)
             }
             BlockKind::Goal => {
-                let mat = if game.engine.is_won() {
+                let is_hit = hit_body_ids.contains(&body.id);
+                let mat = if is_hit {
                     assets.goal_won_mat.clone()
                 } else if is_moveable {
                     assets.moveable_goal_mat.clone()
