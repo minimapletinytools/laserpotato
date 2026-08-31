@@ -116,7 +116,7 @@ pub struct EditorState {
 impl Default for EditorState {
     fn default() -> Self {
         Self {
-            selected_kind: Some(BlockKind::Mirror),
+            selected_kind: None, // Default to Select Mode [S]
             is_fixed: false,
             z_mode: ZPlacementMode::StackOnTop,
             current_z: 0,
@@ -143,6 +143,11 @@ impl Default for EditorState {
 }
 
 impl EditorState {
+    /// Return the stage ground level Z (where items sit on top of the floor).
+    pub fn stage_ground_z(&self) -> i32 {
+        self.floorplan_z + 1
+    }
+
     /// Return the primary selected body ID (first selected block).
     #[allow(dead_code)]
     pub fn primary_selection(&self) -> Option<BodyId> {
@@ -409,6 +414,7 @@ fn raycast_stack_on_top(
     camera_transform: &GlobalTransform,
     cursor_pos: Vec2,
     world: &World,
+    ground_z: i32,
     ignore_body: Option<BodyId>,
 ) -> Option<(IVec3, Option<BodyId>)> {
     let ray = camera.viewport_to_world(camera_transform, cursor_pos).ok()?;
@@ -455,9 +461,9 @@ fn raycast_stack_on_top(
         let target_cell = IVec3::new(hit_cell.x, hit_cell.y, max_z + 1);
         Some((target_cell, Some(hit_body_id)))
     } else {
-        // No block hit directly -> raycast ground plane at Z=0 and check if column has blocks
-        let ground_cell = raycast_plane_at_z(camera, camera_transform, cursor_pos, 0)?;
-        let mut max_z = -1;
+        // No block hit directly -> raycast ground plane at ground_z and check if column has blocks
+        let ground_cell = raycast_plane_at_z(camera, camera_transform, cursor_pos, ground_z)?;
+        let mut max_z = ground_z - 1;
         let mut found_body = None;
         for body in world.bodies() {
             if Some(body.id) == ignore_body {
@@ -470,10 +476,10 @@ fn raycast_stack_on_top(
                 }
             }
         }
-        if max_z >= 0 {
+        if max_z >= ground_z {
             Some((IVec3::new(ground_cell.x, ground_cell.y, max_z + 1), found_body))
         } else {
-            Some((ground_cell, None))
+            Some((IVec3::new(ground_cell.x, ground_cell.y, ground_z), None))
         }
     }
 }
@@ -631,7 +637,7 @@ fn editor_grid_interaction_system(
     let ignore_id = editor.dragging_body_id;
     let (target_cell, raw_hit_body_id) = match editor.z_mode {
         ZPlacementMode::StackOnTop => {
-            let Some((cell, body_id)) = raycast_stack_on_top(camera, camera_transform, cursor_pos, &game.engine.world, ignore_id) else {
+            let Some((cell, body_id)) = raycast_stack_on_top(camera, camera_transform, cursor_pos, &game.engine.world, editor.stage_ground_z(), ignore_id) else {
                 editor.hovered_cell = None;
                 return;
             };
@@ -661,12 +667,63 @@ fn editor_grid_interaction_system(
 
     // 2. Left Click: Selection / Placement / Dragging
     if mouse_button.just_pressed(MouseButton::Left) {
-        if editor.z_mode == ZPlacementMode::FixedLayer {
-            // Fixed Layer Mode: prioritize box-select start
-            editor.box_select_start = Some(cursor_pos);
-            editor.box_select_active = false;
+        if let Some(kind) = editor.selected_kind {
+            // ===============================================================
+            // PLACEMENT MODE: Always place / stack block, NEVER drag
+            // ===============================================================
+            let place_target = if editor.z_mode == ZPlacementMode::FixedLayer {
+                IVec3::new(cell_pos.x, cell_pos.y, editor.current_z)
+            } else {
+                target_cell
+            };
 
-            if editor.selected_kind.is_none() {
+            if !editor.is_layer_locked(place_target.z) {
+                let (can_moveable, can_fixed) = editor.allowed_fixed_state(kind);
+                let is_fixed = if !can_moveable { true } else if !can_fixed { false } else { editor.is_fixed };
+
+                if kind == BlockKind::Player {
+                    if let Some(player_id) = game.engine.world.player_id() {
+                        if let Some(p) = game.engine.world.body_mut(player_id) {
+                            p.anchor = place_target;
+                            game.engine.world.sync_grid();
+                            let new_world = game.engine.world.clone();
+                            game.engine.update_authoring_world(new_world);
+                            editor.select_single(player_id);
+                            editor.dragging_body_id = None;
+                            editor.toast(format!("Relocated player character to ({}, {}, {}).", place_target.x, place_target.y, place_target.z));
+                            editor.cached_solution = None;
+                            return;
+                        }
+                    }
+                }
+
+                let new_id = game.engine.world.spawn(kind, place_target, vec![IVec3::ZERO]);
+                if let Some(b) = game.engine.world.body_mut(new_id) {
+                    if is_fixed {
+                        b.tags.set(TagKind::Fixed, TagValue::Unit);
+                    }
+                }
+                game.engine.world.sync_grid();
+                let new_world = game.engine.world.clone();
+                game.engine.update_authoring_world(new_world);
+                editor.select_single(new_id);
+                editor.dragging_body_id = None;
+                editor.cached_solution = None;
+                if editor.z_mode == ZPlacementMode::StackOnTop && place_target.z > editor.stage_ground_z() {
+                    editor.toast(format!("Stacked {:?} on top at ({}, {}, {})", kind, place_target.x, place_target.y, place_target.z));
+                } else {
+                    editor.toast(format!("Placed {:?} at ({}, {}, {})", kind, place_target.x, place_target.y, place_target.z));
+                }
+            }
+        } else {
+            // ===============================================================
+            // SELECT MODE: Click/Drag to select/move existing blocks
+            // ===============================================================
+            if editor.z_mode == ZPlacementMode::FixedLayer {
+                // Fixed Layer Mode
+                editor.box_select_start = Some(cursor_pos);
+                editor.box_select_active = false;
+
                 if let Some(body_id) = clicked_body_id {
                     if shift_held {
                         editor.toggle_selection(body_id);
@@ -680,51 +737,7 @@ fn editor_grid_interaction_system(
                     editor.clear_selection();
                 }
             } else {
-                // Placing block in FixedLayer mode
-                if let Some(body_id) = clicked_body_id {
-                    if shift_held {
-                        editor.toggle_selection(body_id);
-                    } else {
-                        editor.select_single(body_id);
-                    }
-                } else if !editor.is_layer_locked(cell_pos.z) {
-                    // Place block at layer Z
-                    let kind = editor.selected_kind.unwrap();
-                    let (can_moveable, can_fixed) = editor.allowed_fixed_state(kind);
-                    let is_fixed = if !can_moveable { true } else if !can_fixed { false } else { editor.is_fixed };
-
-                    if kind == BlockKind::Player {
-                        if let Some(player_id) = game.engine.world.player_id() {
-                            if let Some(p) = game.engine.world.body_mut(player_id) {
-                                p.anchor = cell_pos;
-                                game.engine.world.sync_grid();
-                                let new_world = game.engine.world.clone();
-                                game.engine.update_authoring_world(new_world);
-                                editor.select_single(player_id);
-                                editor.toast(format!("Relocated player character to ({}, {}, {}).", cell_pos.x, cell_pos.y, cell_pos.z));
-                                editor.cached_solution = None;
-                                return;
-                            }
-                        }
-                    }
-
-                    let new_id = game.engine.world.spawn(kind, cell_pos, vec![IVec3::ZERO]);
-                    if let Some(b) = game.engine.world.body_mut(new_id) {
-                        if is_fixed {
-                            b.tags.set(TagKind::Fixed, TagValue::Unit);
-                        }
-                    }
-                    game.engine.world.sync_grid();
-                    let new_world = game.engine.world.clone();
-                    game.engine.update_authoring_world(new_world);
-                    editor.select_single(new_id);
-                    editor.cached_solution = None;
-                    editor.toast(format!("Placed {:?} at Layer Z={} ({}, {})", kind, cell_pos.z, cell_pos.x, cell_pos.y));
-                }
-            }
-        } else {
-            // StackOnTop Mode
-            if editor.selected_kind.is_none() {
+                // StackOnTop Select Mode
                 if let Some(body_id) = clicked_body_id {
                     if shift_held {
                         editor.toggle_selection(body_id);
@@ -739,72 +752,28 @@ fn editor_grid_interaction_system(
                     editor.clear_selection();
                     editor.dragging_body_id = None;
                 }
-            } else if let Some(body_id) = clicked_body_id {
-                if shift_held {
-                    editor.toggle_selection(body_id);
-                } else {
-                    editor.select_single(body_id);
-                    editor.dragging_body_id = Some(body_id);
-                }
-            } else {
-                // Stack / Place block
-                let kind = editor.selected_kind.unwrap();
-                let (can_moveable, can_fixed) = editor.allowed_fixed_state(kind);
-                let is_fixed = if !can_moveable { true } else if !can_fixed { false } else { editor.is_fixed };
-
-                if kind == BlockKind::Player {
-                    if let Some(player_id) = game.engine.world.player_id() {
-                        if let Some(p) = game.engine.world.body_mut(player_id) {
-                            p.anchor = cell_pos;
-                            game.engine.world.sync_grid();
-                            let new_world = game.engine.world.clone();
-                            game.engine.update_authoring_world(new_world);
-                            editor.select_single(player_id);
-                            editor.dragging_body_id = None;
-                            editor.toast(format!("Relocated player character to ({}, {}, {}).", cell_pos.x, cell_pos.y, cell_pos.z));
-                            editor.cached_solution = None;
-                            return;
-                        }
-                    }
-                }
-
-                let new_id = game.engine.world.spawn(kind, cell_pos, vec![IVec3::ZERO]);
-                if let Some(b) = game.engine.world.body_mut(new_id) {
-                    if is_fixed {
-                        b.tags.set(TagKind::Fixed, TagValue::Unit);
-                    }
-                }
-                game.engine.world.sync_grid();
-                let new_world = game.engine.world.clone();
-                game.engine.update_authoring_world(new_world);
-                editor.select_single(new_id);
-                editor.dragging_body_id = None;
-                editor.cached_solution = None;
-                if cell_pos.z > 0 {
-                    editor.toast(format!("Stacked {:?} on top at ({}, {}, {})", kind, cell_pos.x, cell_pos.y, cell_pos.z));
-                } else {
-                    editor.toast(format!("Placed {:?} at ({}, {}, {})", kind, cell_pos.x, cell_pos.y, cell_pos.z));
-                }
             }
         }
     } else if mouse_button.pressed(MouseButton::Left) {
-        if editor.z_mode == ZPlacementMode::FixedLayer {
-            if let Some(start) = editor.box_select_start {
-                if cursor_pos.distance(start) > 6.0 {
-                    editor.box_select_active = true;
-                }
-            }
-        } else if let Some(drag_id) = editor.dragging_body_id {
-            // StackOnTop drag single block
-            if let Some(body) = game.engine.world.body(drag_id) {
-                if body.anchor != cell_pos && can_move_body_to(&game.engine.world, drag_id, cell_pos) {
-                    if let Some(b) = game.engine.world.body_mut(drag_id) {
-                        b.anchor = cell_pos;
+        if editor.selected_kind.is_none() {
+            if editor.z_mode == ZPlacementMode::FixedLayer {
+                if let Some(start) = editor.box_select_start {
+                    if cursor_pos.distance(start) > 6.0 {
+                        editor.box_select_active = true;
                     }
-                    game.engine.world.sync_grid();
-                    let new_world = game.engine.world.clone();
-                    game.engine.update_authoring_world(new_world);
-                    editor.cached_solution = None;
+                }
+            } else if let Some(drag_id) = editor.dragging_body_id {
+                // StackOnTop drag single block
+                if let Some(body) = game.engine.world.body(drag_id) {
+                    if body.anchor != cell_pos && can_move_body_to(&game.engine.world, drag_id, cell_pos) {
+                        if let Some(b) = game.engine.world.body_mut(drag_id) {
+                            b.anchor = cell_pos;
+                        }
+                        game.engine.world.sync_grid();
+                        let new_world = game.engine.world.clone();
+                        game.engine.update_authoring_world(new_world);
+                        editor.cached_solution = None;
+                    }
                 }
             }
         }
@@ -952,19 +921,25 @@ fn editor_button_clicks_system(
 
         // 1. Palette block selection
         if let Some(btn) = palette_btn {
-            if editor.selected_kind == Some(btn.0) {
-                editor.selected_kind = None;
-                editor.toast("Select-Only mode (Palette deselected) [Esc].");
-            } else {
-                editor.selected_kind = Some(btn.0);
-                let (can_moveable, can_fixed) = editor.allowed_fixed_state(btn.0);
-                if !can_moveable {
-                    editor.is_fixed = true;
-                } else if !can_fixed {
-                    editor.is_fixed = false;
+            if let Some(kind) = btn.0 {
+                if editor.selected_kind == Some(kind) {
+                    editor.selected_kind = None;
+                    editor.toast("Switched to Select Mode [S / Esc].");
+                } else {
+                    editor.selected_kind = Some(kind);
+                    let (can_moveable, can_fixed) = editor.allowed_fixed_state(kind);
+                    if !can_moveable {
+                        editor.is_fixed = true;
+                    } else if !can_fixed {
+                        editor.is_fixed = false;
+                    }
+                    let label = format!("Selected tool: {:?} (Click in viewport to place/stack)", kind);
+                    editor.toast(label);
                 }
-                let label = format!("Selected tool: {:?}", btn.0);
-                editor.toast(label);
+            } else {
+                // [S] Select button clicked
+                editor.selected_kind = None;
+                editor.toast("Select Mode [S] active. Click or drag blocks to select.");
             }
         }
 
@@ -1547,7 +1522,10 @@ fn editor_keyboard_shortcuts_system(
 
     // Palette selection hotkeys (when not transforming selected blocks)
     if editor.selected_body_ids.is_empty() {
-        if keys.just_pressed(KeyCode::KeyP) {
+        if keys.just_pressed(KeyCode::KeyS) {
+            editor.selected_kind = None;
+            editor.toast("Switched to Select Mode [Key: S]");
+        } else if keys.just_pressed(KeyCode::KeyP) {
             editor.selected_kind = Some(BlockKind::Player);
             editor.toast("Selected tool: Player [Key: P]");
         } else if keys.just_pressed(KeyCode::KeyM) {
@@ -1672,6 +1650,12 @@ mod tests {
     #[test]
     fn select_only_mode_state_test() {
         let mut editor = EditorState::default();
+        // Starts in Select-Only mode [S]
+        assert_eq!(editor.selected_kind, None);
+        assert_eq!(editor.stage_ground_z(), 0);
+
+        // Selecting a tool
+        editor.selected_kind = Some(BlockKind::Mirror);
         assert_eq!(editor.selected_kind, Some(BlockKind::Mirror));
 
         // Deselecting enters select-only mode

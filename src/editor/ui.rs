@@ -12,7 +12,7 @@ use super::{AppMode, EditorAction, EditorState};
 pub struct EditorRootUi;
 
 #[derive(Component)]
-pub struct PaletteButton(pub BlockKind);
+pub struct PaletteButton(pub Option<BlockKind>);
 
 #[derive(Component)]
 pub struct PropertyToggleButton(pub bool); // true = fixed, false = moveable
@@ -555,7 +555,29 @@ pub fn setup_editor_ui(mut commands: Commands) {
                                 ));
                             });
 
-                        // Base Block Buttons (including Floor and Glass)
+                        // 1. Select Tool Button
+                        sidebar
+                            .spawn((
+                                PaletteButton(None),
+                                Button,
+                                Node {
+                                    width: Val::Percent(100.0),
+                                    padding: UiRect::axes(Val::Px(8.0), Val::Px(5.0)),
+                                    justify_content: JustifyContent::Start,
+                                    align_items: AlignItems::Center,
+                                    ..default()
+                                },
+                                BackgroundColor(BTN_NORMAL),
+                            ))
+                            .with_children(|btn| {
+                                btn.spawn((
+                                    Text::new("[S] Select"),
+                                    TextFont::from_font_size(12.0),
+                                    TextColor(TEXT_PRIMARY),
+                                ));
+                            });
+
+                        // 2. Base Block Buttons (including Floor and Glass)
                         let blocks = [
                             (BlockKind::Player, "[P] Player"),
                             (BlockKind::Mirror, "[M] Mirror"),
@@ -570,7 +592,7 @@ pub fn setup_editor_ui(mut commands: Commands) {
                         for (kind, label) in blocks {
                             sidebar
                                 .spawn((
-                                    PaletteButton(kind),
+                                    PaletteButton(Some(kind)),
                                     Button,
                                     Node {
                                         width: Val::Percent(100.0),
@@ -1272,7 +1294,7 @@ pub fn update_editor_ui_system(
 
     for (mut bg, palette_opt, prop_opt, z_mode_opt, combine_opt, uncombine_opt) in &mut button_query {
         if let Some(palette_btn) = palette_opt {
-            bg.0 = if Some(palette_btn.0) == editor.selected_kind {
+            bg.0 = if palette_btn.0 == editor.selected_kind {
                 BTN_ACTIVE
             } else {
                 BTN_NORMAL
