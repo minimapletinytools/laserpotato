@@ -7,6 +7,7 @@
 use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
 use crate::block_types::BlockKind;
 use crate::sim::{BodyId, CubeRot};
@@ -59,7 +60,7 @@ pub struct RenderAssets {
     pub moveable_glass_mat: Handle<StandardMaterial>,
     pub moveable_goal_mat: Handle<StandardMaterial>,
 
-    // Stationary / Fixed (darker shade, sharp hard corners, solid smooth PBR)
+    // Stationary / Fixed (darker shade, sharp hard corners, 3x dense subtle polka dots)
     pub fixed_wall_mat: Handle<StandardMaterial>,
     pub fixed_pushable_mat: Handle<StandardMaterial>,
     pub fixed_mirror_mat: Handle<StandardMaterial>,
@@ -89,6 +90,7 @@ pub fn setup_render_assets(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut images: ResMut<Assets<Image>>,
 ) {
     let cube = meshes.add(Cuboid::new(0.9, 0.9, 0.9));
     let player = meshes.add(create_dodecahedron_mesh());
@@ -106,6 +108,9 @@ pub fn setup_render_assets(
     let laser_core_mesh = meshes.add(Cylinder::new(0.04, 1.0));
     let laser_glow_mesh = meshes.add(Cylinder::new(0.12, 1.0));
     let laser_impact_mesh = meshes.add(Sphere::new(0.12));
+
+    // 3x dense subtle polka dot pattern texture
+    let stone_texture = images.add(create_dense_polkadot_texture());
 
     commands.insert_resource(RenderAssets {
         cube_mesh: cube,
@@ -185,9 +190,10 @@ pub fn setup_render_assets(
             ..default()
         }),
 
-        // Stationary / Immovable Blocks (Sharp hard corners, darker shade, solid smooth PBR)
+        // Stationary / Immovable Blocks (Sharp hard corners, darker shade, 3x dense subtle polka dots)
         fixed_wall_mat: materials.add(StandardMaterial {
             base_color: Color::srgb(0.14, 0.15, 0.18), // Darker charcoal slate
+            base_color_texture: Some(stone_texture.clone()),
             perceptual_roughness: 0.85,
             cull_mode: None,
             double_sided: true,
@@ -195,12 +201,14 @@ pub fn setup_render_assets(
         }),
         floor_mat: materials.add(StandardMaterial {
             base_color: Color::srgb(0.18, 0.20, 0.24), // Darker muted slate grey
+            base_color_texture: Some(stone_texture.clone()),
             perceptual_roughness: 0.85,
             double_sided: true,
             ..default()
         }),
         fixed_pushable_mat: materials.add(StandardMaterial {
             base_color: Color::srgb(0.32, 0.26, 0.20), // Darker bronze/charcoal
+            base_color_texture: Some(stone_texture.clone()),
             perceptual_roughness: 0.75,
             cull_mode: None,
             double_sided: true,
@@ -208,6 +216,7 @@ pub fn setup_render_assets(
         }),
         fixed_mirror_mat: materials.add(StandardMaterial {
             base_color: Color::srgb(0.78, 0.82, 0.88), // Only slightly darker polished steel
+            base_color_texture: Some(stone_texture.clone()),
             metallic: 0.65,
             perceptual_roughness: 0.12,
             emissive: LinearRgba::new(0.06, 0.08, 0.10, 1.0),
@@ -217,6 +226,7 @@ pub fn setup_render_assets(
         }),
         fixed_laser_mat: materials.add(StandardMaterial {
             base_color: Color::srgb(0.45, 0.16, 0.16), // Darker brick red
+            base_color_texture: Some(stone_texture.clone()),
             perceptual_roughness: 0.75,
             cull_mode: None,
             double_sided: true,
@@ -224,6 +234,7 @@ pub fn setup_render_assets(
         }),
         fixed_glass_mat: materials.add(StandardMaterial {
             base_color: Color::srgba(0.10, 0.20, 0.40, 0.50), // Deeper translucent dark blue glass
+            base_color_texture: Some(stone_texture.clone()),
             alpha_mode: AlphaMode::Blend,
             perceptual_roughness: 0.15,
             emissive: LinearRgba::new(0.04, 0.08, 0.20, 1.0),
@@ -232,6 +243,7 @@ pub fn setup_render_assets(
         }),
         goal_mat: materials.add(StandardMaterial {
             base_color: Color::srgb(0.58, 0.45, 0.15), // Darker antique gold
+            base_color_texture: Some(stone_texture.clone()),
             metallic: 0.6,
             perceptual_roughness: 0.3,
             double_sided: true,
@@ -280,8 +292,102 @@ pub fn setup_render_assets(
 }
 
 // ---------------------------------------------------------------------------
-// Procedural Custom Meshes
+// Procedural Custom Textures & Meshes
 // ---------------------------------------------------------------------------
+
+/// Create a 3x dense procedural polka dot texture for stationary/immovable blocks.
+/// Provides a subtle, slightly darker polka dot pattern (~15% darker) on a bright base.
+fn create_dense_polkadot_texture() -> Image {
+    let width = 128;
+    let height = 128;
+    let mut data = Vec::with_capacity((width * height * 4) as usize);
+
+    // 25-degree tilt angle
+    let angle_rad = 25.0_f32.to_radians();
+    let cos_a = angle_rad.cos();
+    let sin_a = angle_rad.sin();
+
+    // 9 rows along Y (3x density compared to 3 rows)
+    let y_rows: [f32; 9] = [
+        7.11, 21.33, 35.55, 49.77, 64.0, 78.22, 92.44, 106.67, 120.88,
+    ];
+    let row_skews: [f32; 9] = [
+        0.0, 4.0, 8.0, 12.0, 16.0, 20.0, 24.0, 28.0, 32.0,
+    ];
+    // 12 dots along X per row (3x density compared to 4 dots)
+    let base_x: [f32; 12] = [
+        5.33, 16.0, 26.67, 37.33, 48.0, 58.67, 69.33, 80.0, 90.67, 101.33, 112.0, 122.67,
+    ];
+    let radius = 3.6_f32;
+
+    for y in 0..height {
+        let py = y as f32 + 0.5;
+        for x in 0..width {
+            let px = x as f32 + 0.5;
+
+            // Rotate coordinates by 25° about center (64, 64)
+            let cx_offset = px - 64.0;
+            let cy_offset = py - 64.0;
+            let rx = (cx_offset * cos_a - cy_offset * sin_a + 64.0).rem_euclid(128.0);
+            let ry = (cx_offset * sin_a + cy_offset * cos_a + 64.0).rem_euclid(128.0);
+
+            // Find distance to closest dot center in the tilted frame
+            let mut min_dist_sq = f32::MAX;
+            for (row_idx, &cy) in y_rows.iter().enumerate() {
+                let skew = row_skews[row_idx];
+                for &bx in &base_x {
+                    let cx = (bx + skew) % 128.0;
+
+                    let mut dx = (rx - cx).abs();
+                    if dx > 64.0 {
+                        dx = 128.0 - dx;
+                    }
+                    let mut dy = (ry - cy).abs();
+                    if dy > 64.0 {
+                        dy = 128.0 - dy;
+                    }
+
+                    let dist_sq = dx * dx + dy * dy;
+                    if dist_sq < min_dist_sq {
+                        min_dist_sq = dist_sq;
+                    }
+                }
+            }
+
+            let dist = min_dist_sq.sqrt();
+            let dot_factor = (1.0 - (dist - (radius - 0.8)).clamp(0.0, 1.0)).clamp(0.0, 1.0);
+
+            // Subtle border frame around the block face
+            let is_border = x <= 1 || x >= width - 2 || y <= 1 || y >= height - 2;
+
+            let val = if is_border {
+                210 // Subtle edge rim
+            } else {
+                // Background = 255 (full color), Dot = 215 (only slightly darker: ~15% darker)
+                let base_val = 255.0_f32;
+                let dot_val = 215.0_f32;
+                (base_val * (1.0 - dot_factor) + dot_val * dot_factor) as u8
+            };
+
+            data.push(val);
+            data.push(val);
+            data.push(val);
+            data.push(255);
+        }
+    }
+
+    Image::new(
+        Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    )
+}
 
 /// Construct a pyramid mesh for the Goal block.
 /// All faces are wound Counter-Clockwise (CCW) facing outward.

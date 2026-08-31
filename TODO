@@ -104,9 +104,11 @@ DONE-improve frame 0 state computations
     -state after returning from test mode needs to reset back to state 0, or state -0.5 and recompute
 
 
+-right after placinga. bolk,c it does not select it. you can't not select stuff in block placement mode
 -in z layer mode, after somethingis selected, click by drag moves the entire selection (only if new position for all blocks is allowed)
--block inspector in block placement mode shows the block to be placed and changing properties changes the properties of the block to be place (new block instead of block info in this case)
 -blocks that can't be toggled immovable should have the toggle immoveable button grayed out
+-block inspector in block placement mode shows the block to be placed and changing properties changes the properties of the block to be place (new block instead of block info in this case)
+
 -add undor redo support.. cmd z cmd shift z
 
 -fix toolbar in level edtior so it shows preview correctly (or switch to 3d cards instead)
