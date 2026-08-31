@@ -270,7 +270,7 @@ fn setup_game(mut commands: Commands) {
         .with_children(|parent| {
             parent.spawn((
                 VictoryBannerText,
-                Text::new("Objective: Direct the laser to strike the Goal Pyramid\n[↑/↓/W/S] Move  |  [←/→/A/D] Turn  |  [Esc] Editor  |  [Z] Undo  |  [R] Reset"),
+                Text::new("Objective: Direct the laser to strike the Goal Pyramid\n[W/S / Up/Down] Move  |  [A/D / Left/Right] Turn  |  [Esc] Editor  |  [Z] Undo  |  [R] Reset"),
                 TextFont::from_font_size(14.0),
                 TextColor(Color::srgb(0.9, 0.9, 0.95)),
             ));
@@ -377,18 +377,18 @@ fn update_victory_ui(
         if mode == editor::AppMode::Playback {
             if game.engine.is_won() {
                 text.0 = format!(
-                    "★ PLAYBACK COMPLETE: Goal Struck in {} Steps! ★\n[Esc] Return to Editor  |  [R] Replay  |  [←/→] Step",
+                    "*** PLAYBACK COMPLETE: Goal Struck in {} Steps! ***\n[Esc] Return to Editor  |  [R] Replay  |  [< / >] Step",
                     playback.current_index
                 );
                 color.0 = Color::srgb(0.3, 1.0, 0.7);
             } else if game.engine.is_lost() {
                 text.0 = format!(
-                    "☠ PLAYBACK: Laser Vaporized Player at Step {} ☠\n[Esc] Return to Editor  |  [R] Restart  |  [←] Step Back",
+                    "!!! PLAYBACK: Laser Vaporized Player at Step {} !!!\n[Esc] Return to Editor  |  [R] Restart  |  [<] Step Back",
                     playback.current_index
                 );
                 color.0 = Color::srgb(1.0, 0.3, 0.3);
             } else {
-                let status_icon = if playback.auto_playing { "▶ [Playing]" } else { "⏸ [Paused]" };
+                let status_label = if playback.auto_playing { "[Playing]" } else { "[Paused]" };
                 let next_action_str = if playback.current_index < playback.actions.len() {
                     format!("Next: {:?}", playback.actions[playback.current_index])
                 } else {
@@ -396,8 +396,8 @@ fn update_victory_ui(
                 };
 
                 text.0 = format!(
-                    "{} Step {} / {} ({})\n[Space] Play/Pause  |  [←/→] Step  |  [Esc] Return to Editor  |  [R] Restart",
-                    status_icon,
+                    "{} Step {} / {} ({})\n[Space] Play/Pause  |  [< / >] Step  |  [Esc] Return to Editor  |  [R] Restart",
+                    status_label,
                     playback.current_index,
                     playback.actions.len(),
                     next_action_str
@@ -406,20 +406,20 @@ fn update_victory_ui(
             }
         } else if mode == editor::AppMode::Playtest {
             if let Some(err) = &game.engine.validation_error {
-                text.0 = format!("⚠ INVALID LEVEL: {}\n[Esc] Return to Editor", err);
+                text.0 = format!("! INVALID LEVEL: {}\n[Esc] Return to Editor", err);
                 color.0 = Color::srgb(1.0, 0.35, 0.35);
             } else {
                 match game.engine.outcome {
                     turn::GameOutcome::Won => {
-                        text.0 = "★ LEVEL COMPLETE! Laser Struck Goal Pyramid! ★\n[Esc] Return to Editor  |  [Z] Undo  |  [R] Reset".into();
+                        text.0 = "*** LEVEL COMPLETE! Laser Struck Goal Pyramid! ***\n[Esc] Return to Editor  |  [Z] Undo  |  [R] Reset".into();
                         color.0 = Color::srgb(0.3, 1.0, 0.7);
                     }
                     turn::GameOutcome::Lost => {
-                        text.0 = "☠ GAME OVER! Laser Vaporized Player! ☠\n[Esc] Return to Editor  |  [Z] Undo  |  [R] Reset".into();
+                        text.0 = "!!! GAME OVER! Laser Vaporized Player! !!!\n[Esc] Return to Editor  |  [Z] Undo  |  [R] Reset".into();
                         color.0 = Color::srgb(1.0, 0.3, 0.3);
                     }
                     turn::GameOutcome::InProgress => {
-                        text.0 = "PLAYTEST MODE: Direct laser to Goal Pyramid\n[↑/↓/W/S] Move  |  [←/→/A/D] Turn  |  [Esc] Return to Editor  |  [Z] Undo  |  [R] Reset".into();
+                        text.0 = "PLAYTEST MODE: Direct laser to Goal Pyramid\n[W/S / Up/Down] Move  |  [A/D / Left/Right] Turn  |  [Esc] Return to Editor  |  [Z] Undo  |  [R] Reset".into();
                         color.0 = Color::srgb(0.9, 0.95, 1.0);
                     }
                 }

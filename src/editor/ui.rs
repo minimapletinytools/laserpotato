@@ -258,7 +258,7 @@ pub fn setup_editor_ui(mut commands: Commands) {
             .with_children(|banner| {
                 banner.spawn((
                     ValidationErrorText,
-                    Text::new("⚠ LEVEL INVALID: spontaneous movement detected at Frame 1. Frame 1 preview disabled."),
+                    Text::new("[!] LEVEL INVALID: spontaneous movement detected at Frame 1. Frame 1 preview disabled."),
                     TextFont::from_font_size(12.0),
                     TextColor(Color::srgb(1.0, 1.0, 1.0)),
                 ));
@@ -1400,17 +1400,14 @@ pub fn update_editor_status_and_modal_ui_system(
             }
         } else if banner_opt.is_some() {
             if let Some(err_msg) = &game.engine.validation_error {
-                text.0 = format!("⚠ {}", err_msg);
+                text.0 = format!("[!] {}", err_msg);
             }
         } else if fp_w_opt.is_some() {
             text.0 = format!("Width: {}", editor.floorplan_width);
         } else if fp_h_opt.is_some() {
             text.0 = format!("Height: {}", editor.floorplan_height);
         } else if fp_z_opt.is_some() {
-            text.0 = format!("Height: {}", editor.floorplan_height);
             text.0 = format!("Floor Z: {}", editor.floorplan_z);
-        } else if fp_h_opt.is_some() {
-            text.0 = format!("Height: {}", editor.floorplan_height);
         } else if fp_lock_opt.is_some() {
             let is_locked = editor.is_layer_locked(editor.floorplan_z);
             text.0 = if is_locked {
