@@ -115,6 +115,9 @@ pub struct EditorState {
 
 impl Default for EditorState {
     fn default() -> Self {
+        let mut locked_z_layers = std::collections::HashSet::new();
+        locked_z_layers.insert(-1); // Floor layer locked by default
+
         Self {
             selected_kind: None, // Default to Select Mode [S]
             is_fixed: false,
@@ -124,7 +127,7 @@ impl Default for EditorState {
             dragging_body_id: None,
             box_select_start: None,
             box_select_active: false,
-            locked_z_layers: std::collections::HashSet::new(),
+            locked_z_layers,
             floorplan_open: false,
             floorplan_width: 10,
             floorplan_height: 10,
@@ -146,6 +149,15 @@ impl EditorState {
     /// Return the stage ground level Z (where items sit on top of the floor).
     pub fn stage_ground_z(&self) -> i32 {
         self.floorplan_z + 1
+    }
+
+    /// Close any open modals. Returns true if a modal was closed.
+    pub fn close_modals(&mut self) -> bool {
+        if self.floorplan_open {
+            self.floorplan_open = false;
+            return true;
+        }
+        false
     }
 
     /// Return the primary selected body ID (first selected block).
@@ -1029,27 +1041,29 @@ fn editor_button_clicks_system(
             match btn.0 {
                 EditorAction::NewLevel => {
                     let mut world = World::new();
-                    world.spawn(BlockKind::Player, IVec3::new(2, 2, 0), vec![IVec3::ZERO]);
-                    let gid = world.spawn(BlockKind::Goal, IVec3::new(6, 6, 0), vec![IVec3::ZERO]);
+                    fill_floorplan(&mut world, 10, 10, -1);
+                    world.spawn(BlockKind::Player, IVec3::new(3, 8, 0), vec![IVec3::ZERO]);
+                    let gid = world.spawn(BlockKind::Goal, IVec3::new(8, 8, 0), vec![IVec3::ZERO]);
                     world.body_mut(gid).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
-                    for x in -1..=7 {
-                        let w1 = world.spawn(BlockKind::Wall, IVec3::new(x, -1, 0), vec![IVec3::ZERO]);
+                    for x in 0..10 {
+                        let w1 = world.spawn(BlockKind::Wall, IVec3::new(x, 0, 0), vec![IVec3::ZERO]);
                         world.body_mut(w1).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
-                        let w2 = world.spawn(BlockKind::Wall, IVec3::new(x, 7, 0), vec![IVec3::ZERO]);
+                        let w2 = world.spawn(BlockKind::Wall, IVec3::new(x, 9, 0), vec![IVec3::ZERO]);
                         world.body_mut(w2).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
                     }
-                    for y in 0..=6 {
-                        let w1 = world.spawn(BlockKind::Wall, IVec3::new(-1, y, 0), vec![IVec3::ZERO]);
+                    for y in 1..9 {
+                        let w1 = world.spawn(BlockKind::Wall, IVec3::new(0, y, 0), vec![IVec3::ZERO]);
                         world.body_mut(w1).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
-                        let w2 = world.spawn(BlockKind::Wall, IVec3::new(7, y, 0), vec![IVec3::ZERO]);
+                        let w2 = world.spawn(BlockKind::Wall, IVec3::new(9, y, 0), vec![IVec3::ZERO]);
                         world.body_mut(w2).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
                     }
                     world.sync_grid();
                     game.engine = TurnEngine::new(world);
+                    editor.locked_z_layers.insert(-1);
                     editor.clear_selection();
                     editor.cached_solution = None;
                     editor.solver_status = "Idle".into();
-                    editor.toast("Created new blank puzzle room.");
+                    editor.toast("Created new blank 10x10 puzzle room with locked floor.");
                 }
                 EditorAction::Save => {
                     let path = editor.current_level_path.clone();
@@ -1499,7 +1513,11 @@ fn editor_keyboard_shortcuts_system(
     mut game: ResMut<GameState>,
     mut playback: ResMut<crate::PlaybackState>,
 ) {
-    // Return to Editor from Playtest or Playback mode with Escape, or clear selection / tool
+    // Handle Escape key:
+    // 1. Return to Editor from Playtest or Playback mode
+    // 2. Close any open modal (e.g. Floorplan modal)
+    // 3. Clear block selection if blocks are selected
+    // 4. Revert to Select Mode [S] if a placement tool is active
     if keys.just_pressed(KeyCode::Escape) {
         if *app_mode.get() != AppMode::Editor {
             game.engine.end_playtest();
@@ -1507,12 +1525,15 @@ fn editor_keyboard_shortcuts_system(
             next_mode.set(AppMode::Editor);
             editor.toast("Returned to Level Editor (Frame 0*).");
             return;
-        } else if editor.selected_kind.is_some() {
-            editor.selected_kind = None;
-            editor.toast("Select-Only mode (Palette tool deselected) [Esc].");
+        } else if editor.close_modals() {
+            editor.toast("Closed modal [Esc].");
+            return;
         } else if !editor.selected_body_ids.is_empty() {
             editor.clear_selection();
-            editor.toast("Deselected all blocks.");
+            editor.toast("Cleared selection [Esc].");
+        } else if editor.selected_kind.is_some() {
+            editor.selected_kind = None;
+            editor.toast("Reverted to Select Mode [Esc].");
         }
     }
 
@@ -1701,5 +1722,32 @@ mod tests {
             assert_eq!(b.anchor.z, -1);
             assert!(b.is_fixed());
         }
+    }
+
+    #[test]
+    fn modal_and_escape_reversion_test() {
+        let mut editor = EditorState::default();
+        // Floor layer Z=-1 is locked by default
+        assert!(editor.is_layer_locked(-1));
+
+        // Open modal and close it
+        editor.floorplan_open = true;
+        assert!(editor.close_modals());
+        assert!(!editor.floorplan_open);
+        assert!(!editor.close_modals());
+
+        // In placement mode, clearing reverts to select mode
+        editor.selected_kind = Some(BlockKind::Wall);
+        editor.select_single(BodyId(5));
+        assert_eq!(editor.selected_body_ids.len(), 1);
+
+        // First escape clears selection
+        editor.clear_selection();
+        assert!(editor.selected_body_ids.is_empty());
+        assert!(editor.selected_kind.is_some());
+
+        // Next escape reverts tool to select mode
+        editor.selected_kind = None;
+        assert!(editor.selected_kind.is_none());
     }
 }
