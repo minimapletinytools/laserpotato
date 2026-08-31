@@ -6,8 +6,7 @@
 
 use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
-use bevy::render::mesh::{Indices, PrimitiveTopology};
-use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+use bevy::render::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
 
 use crate::block_types::BlockKind;
 use crate::sim::{BodyId, CubeRot};
@@ -53,16 +52,21 @@ pub struct RenderAssets {
     pub player_burnt_mat: Handle<StandardMaterial>,
     pub player_indicator_mat: Handle<StandardMaterial>,
 
-    // Moveable (vibrant, saturated, smooth)
+    // Moveable (vibrant, saturated, chamfered)
     pub moveable_pushable_mat: Handle<StandardMaterial>,
     pub moveable_mirror_mat: Handle<StandardMaterial>,
     pub moveable_laser_mat: Handle<StandardMaterial>,
+    pub moveable_glass_mat: Handle<StandardMaterial>,
+    pub moveable_goal_mat: Handle<StandardMaterial>,
 
-    // Stationary / Fixed (desaturated, darker, with stone grid texture)
+    // Stationary / Fixed (darker shade, sharp hard corners, solid smooth PBR)
     pub fixed_wall_mat: Handle<StandardMaterial>,
     pub fixed_pushable_mat: Handle<StandardMaterial>,
     pub fixed_mirror_mat: Handle<StandardMaterial>,
     pub fixed_laser_mat: Handle<StandardMaterial>,
+    pub fixed_glass_mat: Handle<StandardMaterial>,
+    pub floor_mat: Handle<StandardMaterial>,
+    pub goal_mat: Handle<StandardMaterial>,
 
     // Laser Source Indicator & Beams
     pub laser_indicator_mat: Handle<StandardMaterial>,
@@ -70,19 +74,14 @@ pub struct RenderAssets {
     pub laser_glow_mat: Handle<StandardMaterial>,
     pub laser_impact_mat: Handle<StandardMaterial>,
 
-    // Goal
-    pub goal_mat: Handle<StandardMaterial>,
+    // Goal Victory
     pub goal_won_mat: Handle<StandardMaterial>,
+
+    // Chamfered mesh handles for moveable blocks
     pub rounded_cube_mesh: Handle<Mesh>,
     pub rounded_mirror_mesh: Handle<Mesh>,
     pub rounded_mirror_mesh_chiral: Handle<Mesh>,
     pub rounded_pyramid_mesh: Handle<Mesh>,
-
-    pub floor_mat: Handle<StandardMaterial>,
-    pub moveable_glass_mat: Handle<StandardMaterial>,
-    pub fixed_glass_mat: Handle<StandardMaterial>,
-    pub moveable_goal_mat: Handle<StandardMaterial>,
-
 }
 
 /// Startup system — create shared meshes and materials.
@@ -90,7 +89,6 @@ pub fn setup_render_assets(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut images: ResMut<Assets<Image>>,
 ) {
     let cube = meshes.add(Cuboid::new(0.9, 0.9, 0.9));
     let player = meshes.add(create_dodecahedron_mesh());
@@ -99,19 +97,15 @@ pub fn setup_render_assets(
     let pyramid = meshes.add(create_pyramid_mesh());
     let indicator = meshes.add(Cuboid::new(0.3, 0.3, 0.15));
 
-    
     let rounded_cube = meshes.add(create_rounded_cube_mesh(0.9, 0.08));
-    let rounded_mirror = meshes.add(create_rounded_mirror_mesh(0.08));
-    let rounded_mirror_chiral = meshes.add(create_rounded_chiral_mirror_mesh(0.08));
-    let rounded_pyramid = meshes.add(create_rounded_pyramid_mesh(0.08));
+    let rounded_mirror = meshes.add(create_rounded_mirror_mesh(0.06));
+    let rounded_mirror_chiral = meshes.add(create_rounded_chiral_mirror_mesh(0.06));
+    let rounded_pyramid = meshes.add(create_rounded_pyramid_mesh(0.06));
 
     // Continuous cylinder meshes for lasers:
     let laser_core_mesh = meshes.add(Cylinder::new(0.04, 1.0));
     let laser_glow_mesh = meshes.add(Cylinder::new(0.12, 1.0));
     let laser_impact_mesh = meshes.add(Sphere::new(0.12));
-
-    // Procedural texture for stationary/fixed blocks
-    let stone_texture = images.add(create_fixed_block_texture());
 
     commands.insert_resource(RenderAssets {
         cube_mesh: cube,
@@ -129,7 +123,7 @@ pub fn setup_render_assets(
         rounded_mirror_mesh_chiral: rounded_mirror_chiral,
         rounded_pyramid_mesh: rounded_pyramid,
 
-// Player (vibrant blue dodecahedron)
+        // Player (vibrant blue dodecahedron)
         player_mat: materials.add(StandardMaterial {
             base_color: Color::srgb(0.25, 0.6, 1.0),
             perceptual_roughness: 0.2,
@@ -150,7 +144,7 @@ pub fn setup_render_assets(
             ..default()
         }),
 
-        // Moveable Blocks (Vibrant, Saturated, Smooth finish)
+        // Moveable Blocks (Chamfered, Vibrant, Saturated finish)
         moveable_pushable_mat: materials.add(StandardMaterial {
             base_color: Color::srgb(1.0, 0.65, 0.12), // Bright golden orange
             perceptual_roughness: 0.3,
@@ -160,53 +154,85 @@ pub fn setup_render_assets(
         }),
         moveable_mirror_mat: materials.add(StandardMaterial {
             base_color: Color::srgb(0.96, 0.98, 1.0), // Gleaming bright polished silver
-            metallic: 0.6,
-            perceptual_roughness: 0.08,
+            metallic: 0.75,
+            perceptual_roughness: 0.06,
             emissive: LinearRgba::new(0.14, 0.16, 0.20, 1.0), // Clean silver specular glow
             cull_mode: None,
             double_sided: true,
             ..default()
         }),
         moveable_laser_mat: materials.add(StandardMaterial {
-            base_color: Color::srgb(0.9, 0.15, 0.15), // Bright crimson
+            base_color: Color::srgb(0.92, 0.15, 0.15), // Bright crimson
             perceptual_roughness: 0.3,
             cull_mode: None,
             double_sided: true,
             ..default()
         }),
+        moveable_glass_mat: materials.add(StandardMaterial {
+            base_color: Color::srgba(0.65, 0.88, 1.0, 0.28),
+            alpha_mode: AlphaMode::Blend,
+            perceptual_roughness: 0.05,
+            emissive: LinearRgba::new(0.12, 0.18, 0.30, 1.0),
+            double_sided: true,
+            ..default()
+        }),
+        moveable_goal_mat: materials.add(StandardMaterial {
+            base_color: Color::srgb(1.0, 0.85, 0.22),
+            metallic: 0.7,
+            perceptual_roughness: 0.15,
+            emissive: LinearRgba::new(0.4, 0.3, 0.05, 1.0),
+            double_sided: true,
+            ..default()
+        }),
 
-        // Stationary / Fixed Blocks (Desaturated, darker, with 12-dot polka dot texture)
+        // Stationary / Immovable Blocks (Sharp hard corners, darker shade, solid smooth PBR)
         fixed_wall_mat: materials.add(StandardMaterial {
-            base_color: Color::srgb(0.48, 0.48, 0.52),
-            base_color_texture: Some(stone_texture.clone()),
-            perceptual_roughness: 0.8,
+            base_color: Color::srgb(0.22, 0.24, 0.28), // Dark charcoal slate
+            perceptual_roughness: 0.85,
             cull_mode: None,
             double_sided: true,
             ..default()
         }),
+        floor_mat: materials.add(StandardMaterial {
+            base_color: Color::srgb(0.28, 0.31, 0.35), // Smooth muted slate grey
+            perceptual_roughness: 0.85,
+            double_sided: true,
+            ..default()
+        }),
         fixed_pushable_mat: materials.add(StandardMaterial {
-            base_color: Color::srgb(0.5, 0.46, 0.42),
-            base_color_texture: Some(stone_texture.clone()),
-            perceptual_roughness: 0.7,
+            base_color: Color::srgb(0.32, 0.26, 0.20), // Darker bronze/charcoal
+            perceptual_roughness: 0.75,
             cull_mode: None,
             double_sided: true,
             ..default()
         }),
         fixed_mirror_mat: materials.add(StandardMaterial {
-            base_color: Color::srgb(0.88, 0.91, 0.96), // Bright silver with polka dot pattern
-            base_color_texture: Some(stone_texture.clone()),
-            metallic: 0.45,
-            perceptual_roughness: 0.15,
-            emissive: LinearRgba::new(0.10, 0.12, 0.16, 1.0), // Bright silver radiance
+            base_color: Color::srgb(0.78, 0.82, 0.88), // Only slightly darker polished steel
+            metallic: 0.65,
+            perceptual_roughness: 0.12,
+            emissive: LinearRgba::new(0.06, 0.08, 0.10, 1.0),
             cull_mode: None,
             double_sided: true,
             ..default()
         }),
         fixed_laser_mat: materials.add(StandardMaterial {
-            base_color: Color::srgb(0.55, 0.35, 0.35),
-            base_color_texture: Some(stone_texture.clone()),
-            perceptual_roughness: 0.7,
+            base_color: Color::srgb(0.45, 0.16, 0.16), // Darker brick red
+            perceptual_roughness: 0.75,
             cull_mode: None,
+            double_sided: true,
+            ..default()
+        }),
+        fixed_glass_mat: materials.add(StandardMaterial {
+            base_color: Color::srgba(0.25, 0.28, 0.32, 0.45), // Darker translucent smoked glass
+            alpha_mode: AlphaMode::Blend,
+            perceptual_roughness: 0.15,
+            double_sided: true,
+            ..default()
+        }),
+        goal_mat: materials.add(StandardMaterial {
+            base_color: Color::srgb(0.58, 0.45, 0.15), // Darker antique gold
+            metallic: 0.6,
+            perceptual_roughness: 0.3,
             double_sided: true,
             ..default()
         }),
@@ -240,17 +266,7 @@ pub fn setup_render_assets(
             ..default()
         }),
 
-        // Goal Pyramid: default golden crystal
-        goal_mat: materials.add(StandardMaterial {
-            base_color: Color::srgb(1.0, 0.8, 0.15),
-            metallic: 0.7,
-            perceptual_roughness: 0.2,
-            emissive: LinearRgba::new(0.4, 0.3, 0.05, 1.0),
-            double_sided: true,
-            ..default()
-        }),
-
-        // Goal Pyramid: triumphant radiant victory glow
+        // Goal Victory
         goal_won_mat: materials.add(StandardMaterial {
             base_color: Color::srgb(0.3, 1.0, 0.8),
             metallic: 0.8,
@@ -259,140 +275,12 @@ pub fn setup_render_assets(
             double_sided: true,
             ..default()
         }),
-        moveable_goal_mat: materials.add(StandardMaterial {
-            base_color: Color::srgb(1.0, 0.85, 0.25),
-            metallic: 0.7,
-            perceptual_roughness: 0.2,
-            emissive: LinearRgba::new(0.5, 0.4, 0.1, 1.0),
-            double_sided: true,
-            ..default()
-        }),
-        floor_mat: materials.add(StandardMaterial {
-            base_color: Color::srgb(0.35, 0.38, 0.42),
-            base_color_texture: Some(stone_texture.clone()),
-            perceptual_roughness: 0.9,
-            double_sided: true,
-            ..default()
-        }),
-        moveable_glass_mat: materials.add(StandardMaterial {
-            base_color: Color::srgba(0.7, 0.85, 1.0, 0.25),
-            alpha_mode: AlphaMode::Blend,
-            perceptual_roughness: 0.05,
-            emissive: LinearRgba::new(0.1, 0.15, 0.25, 1.0),
-            double_sided: true,
-            ..default()
-        }),
-        fixed_glass_mat: materials.add(StandardMaterial {
-            base_color: Color::srgba(0.5, 0.55, 0.6, 0.3),
-            alpha_mode: AlphaMode::Blend,
-            base_color_texture: Some(stone_texture.clone()),
-            perceptual_roughness: 0.1,
-            double_sided: true,
-            ..default()
-        }),
     });
 }
 
 // ---------------------------------------------------------------------------
-// Procedural Textures & Custom Meshes
+// Procedural Custom Meshes
 // ---------------------------------------------------------------------------
-
-/// Create a procedural polka dot texture for stationary/immovable blocks.
-/// Features bold polka dots tilted at a 25° angle with skewed rows and soft contrast (12 dots per face).
-fn create_fixed_block_texture() -> Image {
-    let width = 128;
-    let height = 128;
-    let mut data = Vec::with_capacity((width * height * 4) as usize);
-
-    // 25-degree tilt angle
-    let angle_rad = 25.0_f32.to_radians();
-    let cos_a = angle_rad.cos();
-    let sin_a = angle_rad.sin();
-
-    // 3 rows along Y
-    let y_rows = [21.33_f32, 64.0, 106.67];
-    let row_skews = [0.0_f32, 12.0, 24.0];
-    let base_x = [16.0_f32, 48.0, 80.0, 112.0];
-    let radius = 11.5_f32;
-
-    for y in 0..height {
-        let py = y as f32 + 0.5;
-        for x in 0..width {
-            let px = x as f32 + 0.5;
-
-            // Rotate coordinates by 25° about center (64, 64)
-            let cx_offset = px - 64.0;
-            let cy_offset = py - 64.0;
-            let rx = (cx_offset * cos_a - cy_offset * sin_a + 64.0).rem_euclid(128.0);
-            let ry = (cx_offset * sin_a + cy_offset * cos_a + 64.0).rem_euclid(128.0);
-
-            // Find distance to closest dot center in the tilted frame
-            let mut min_dist_sq = f32::MAX;
-            for (row_idx, &cy) in y_rows.iter().enumerate() {
-                let skew = row_skews[row_idx];
-                for &bx in &base_x {
-                    let cx = (bx + skew) % 128.0;
-
-                    let mut dx = (rx - cx).abs();
-                    if dx > 64.0 {
-                        dx = 128.0 - dx;
-                    }
-                    let mut dy = (ry - cy).abs();
-                    if dy > 64.0 {
-                        dy = 128.0 - dy;
-                    }
-
-                    let dist_sq = dx * dx + dy * dy;
-                    if dist_sq < min_dist_sq {
-                        min_dist_sq = dist_sq;
-                    }
-                }
-            }
-
-            let dist = min_dist_sq.sqrt();
-            let dot_factor = (1.0 - (dist - (radius - 1.2)).clamp(0.0, 1.5) / 1.5).clamp(0.0, 1.0);
-
-            // Subtle border frame around the block face
-            let is_border = x <= 2 || x >= width - 3 || y <= 2 || y >= height - 3;
-
-            let (r, g, b) = if is_border {
-                (42, 45, 52) // Dark border rim
-            } else {
-                // Background dark slate base: (72, 75, 82)
-                // Soft muted polka dot color (less bright): (132, 138, 148)
-                let base_r = 72.0_f32;
-                let base_g = 75.0_f32;
-                let base_b = 82.0_f32;
-
-                let dot_r = 132.0_f32;
-                let dot_g = 138.0_f32;
-                let dot_b = 148.0_f32;
-
-                let r = (base_r * (1.0 - dot_factor) + dot_r * dot_factor) as u8;
-                let g = (base_g * (1.0 - dot_factor) + dot_g * dot_factor) as u8;
-                let b = (base_b * (1.0 - dot_factor) + dot_b * dot_factor) as u8;
-                (r, g, b)
-            };
-
-            data.push(r);
-            data.push(g);
-            data.push(b);
-            data.push(255);
-        }
-    }
-
-    Image::new(
-        Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        data,
-        TextureFormat::Rgba8UnormSrgb,
-        RenderAssetUsages::default(),
-    )
-}
 
 /// Construct a pyramid mesh for the Goal block.
 /// All faces are wound Counter-Clockwise (CCW) facing outward.
@@ -758,16 +646,192 @@ fn create_rounded_cube_mesh(size: f32, bevel: f32) -> Mesh {
         .with_inserted_indices(Indices::U32(indices))
 }
 
-fn create_rounded_mirror_mesh(_bevel: f32) -> Mesh {
-    create_mirror_mesh()
+fn create_rounded_mirror_mesh(bevel: f32) -> Mesh {
+    let s = 0.45;
+    let b = bevel.min(0.08);
+    let hsb = s - b;
+    let bd = b * std::f32::consts::SQRT_2;
+    let n = std::f32::consts::FRAC_1_SQRT_2;
+
+    let mut positions: Vec<[f32; 3]> = Vec::new();
+    let mut normals: Vec<[f32; 3]> = Vec::new();
+    let mut uvs: Vec<[f32; 2]> = Vec::new();
+    let mut indices: Vec<u32> = Vec::new();
+
+    macro_rules! add_tri {
+        ($p1:expr, $p2:expr, $p3:expr, $norm:expr) => {
+            let base = positions.len() as u32;
+            positions.extend_from_slice(&[$p1, $p2, $p3]);
+            normals.extend_from_slice(&[$norm, $norm, $norm]);
+            uvs.extend_from_slice(&[[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]]);
+            indices.extend_from_slice(&[base, base + 1, base + 2]);
+        };
+    }
+
+    macro_rules! add_quad {
+        ($p1:expr, $p2:expr, $p3:expr, $p4:expr, $norm:expr) => {
+            let base = positions.len() as u32;
+            positions.extend_from_slice(&[$p1, $p2, $p3, $p4]);
+            normals.extend_from_slice(&[$norm, $norm, $norm, $norm]);
+            uvs.extend_from_slice(&[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]);
+            indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+        };
+    }
+
+    // 1. Top Cap (+Y) - Inset Triangle
+    let t0 = [-hsb, s, -hsb];
+    let t1 = [-hsb, s, s - bd];
+    let t2 = [s - bd, s, -hsb];
+    add_tri!(t0, t1, t2, [0.0, 1.0, 0.0]);
+
+    // 2. Bottom Cap (-Y) - Inset Triangle
+    let b0 = [-hsb, -s, -hsb];
+    let b1 = [s - bd, -s, -hsb];
+    let b2 = [-hsb, -s, s - bd];
+    add_tri!(b0, b1, b2, [0.0, -1.0, 0.0]);
+
+    // 3. Back Wall 1 (-X Face) - Inset Quad
+    let w1_top_front = [-s, hsb, s - bd];
+    let w1_top_back = [-s, hsb, -hsb];
+    let w1_bot_back = [-s, -hsb, -hsb];
+    let w1_bot_front = [-s, -hsb, s - bd];
+    add_quad!(w1_top_front, w1_top_back, w1_bot_back, w1_bot_front, [-1.0, 0.0, 0.0]);
+
+    // 4. Back Wall 2 (-Z Face) - Inset Quad
+    let w2_top_back = [-hsb, hsb, -s];
+    let w2_top_right = [s - bd, hsb, -s];
+    let w2_bot_right = [s - bd, -hsb, -s];
+    let w2_bot_back = [-hsb, -hsb, -s];
+    add_quad!(w2_top_back, w2_top_right, w2_bot_right, w2_bot_back, [0.0, 0.0, -1.0]);
+
+    // 5. Hypotenuse Mirror Face (+X/+Z Diagonal) - Inset Quad
+    let hyp_top_right = [s - b, hsb, -s + bd];
+    let hyp_top_front = [-s + bd, hsb, s - b];
+    let hyp_bot_front = [-s + bd, -hsb, s - b];
+    let hyp_bot_right = [s - b, -hsb, -s + bd];
+    add_quad!(hyp_top_right, hyp_top_front, hyp_bot_front, hyp_bot_right, [n, 0.0, n]);
+
+    // 6. Horizontal Edge Chamfers (Top)
+    add_quad!(t1, t0, w1_top_back, w1_top_front, [-n, n, 0.0]);
+    add_quad!(t0, t2, w2_top_right, w2_top_back, [0.0, n, -n]);
+    add_quad!(t2, t1, hyp_top_front, hyp_top_right, [0.5, n, 0.5]);
+
+    // 7. Horizontal Edge Chamfers (Bottom)
+    add_quad!(w1_bot_front, w1_bot_back, b0, b2, [-n, -n, 0.0]);
+    add_quad!(w2_bot_back, w2_bot_right, b1, b0, [0.0, -n, -n]);
+    add_quad!(hyp_bot_right, hyp_bot_front, b2, b1, [0.5, -n, 0.5]);
+
+    // 8. Vertical Edge Chamfers
+    add_quad!(w1_top_back, w2_top_back, w2_bot_back, w1_bot_back, [-n, 0.0, -n]);
+    let front_tip_n = Vec3::new(-0.38268, 0.0, 0.92388).normalize();
+    add_quad!(w1_top_front, hyp_top_front, hyp_bot_front, w1_bot_front, [front_tip_n.x, front_tip_n.y, front_tip_n.z]);
+    let right_tip_n = Vec3::new(0.92388, 0.0, -0.38268).normalize();
+    add_quad!(hyp_top_right, w2_top_right, w2_bot_right, hyp_bot_right, [right_tip_n.x, right_tip_n.y, right_tip_n.z]);
+
+    // 9. Corner Triangles (6 corners)
+    let n3 = 1.0 / 3.0f32.sqrt();
+    add_tri!(t0, w1_top_back, w2_top_back, [-n3, n3, -n3]);
+    add_tri!(t1, hyp_top_front, w1_top_front, [-0.4, 0.7, 0.6]);
+    add_tri!(t2, w2_top_right, hyp_top_right, [0.6, 0.7, -0.4]);
+
+    add_tri!(b0, w2_bot_back, w1_bot_back, [-n3, -n3, -n3]);
+    add_tri!(b2, w1_bot_front, hyp_bot_front, [-0.4, -0.7, 0.6]);
+    add_tri!(b1, hyp_bot_right, w2_bot_right, [0.6, -0.7, -0.4]);
+
+    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+        .with_inserted_indices(Indices::U32(indices))
 }
 
-fn create_rounded_chiral_mirror_mesh(_bevel: f32) -> Mesh {
-    create_chiral_mirror_mesh()
+fn reflect_mesh_x(mut mesh: Mesh) -> Mesh {
+    if let Some(VertexAttributeValues::Float32x3(positions)) = mesh.attribute_mut(Mesh::ATTRIBUTE_POSITION) {
+        for p in positions.iter_mut() {
+            p[0] = -p[0];
+        }
+    }
+    if let Some(VertexAttributeValues::Float32x3(normals)) = mesh.attribute_mut(Mesh::ATTRIBUTE_NORMAL) {
+        for n in normals.iter_mut() {
+            n[0] = -n[0];
+        }
+    }
+    if let Some(Indices::U32(indices)) = mesh.indices_mut() {
+        for chunk in indices.chunks_exact_mut(3) {
+            chunk.swap(1, 2);
+        }
+    }
+    mesh
 }
 
-fn create_rounded_pyramid_mesh(_bevel: f32) -> Mesh {
-    create_pyramid_mesh()
+fn create_rounded_chiral_mirror_mesh(bevel: f32) -> Mesh {
+    reflect_mesh_x(create_rounded_mirror_mesh(bevel))
+}
+
+fn create_rounded_pyramid_mesh(bevel: f32) -> Mesh {
+    let s: f32 = 0.45;
+    let b = bevel.min(0.08);
+    let hsb = s - b;
+    let apex_y: f32 = 0.35;
+    let n = std::f32::consts::FRAC_1_SQRT_2;
+
+    let mut positions: Vec<[f32; 3]> = Vec::new();
+    let mut normals: Vec<[f32; 3]> = Vec::new();
+    let mut uvs: Vec<[f32; 2]> = Vec::new();
+    let mut indices: Vec<u32> = Vec::new();
+
+    macro_rules! add_tri {
+        ($p1:expr, $p2:expr, $p3:expr, $norm:expr) => {
+            let base = positions.len() as u32;
+            positions.extend_from_slice(&[$p1, $p2, $p3]);
+            normals.extend_from_slice(&[$norm, $norm, $norm]);
+            uvs.extend_from_slice(&[[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]]);
+            indices.extend_from_slice(&[base, base + 1, base + 2]);
+        };
+    }
+
+    macro_rules! add_quad {
+        ($p1:expr, $p2:expr, $p3:expr, $p4:expr, $norm:expr) => {
+            let base = positions.len() as u32;
+            positions.extend_from_slice(&[$p1, $p2, $p3, $p4]);
+            normals.extend_from_slice(&[$norm, $norm, $norm, $norm]);
+            uvs.extend_from_slice(&[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]);
+            indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+        };
+    }
+
+    let h = apex_y + s;
+    let len = (s * s + h * h).sqrt();
+    let ny = s / len;
+    let nside = h / len;
+
+    let apex = [0.0, apex_y - b * 0.5, 0.0];
+    add_tri!([hsb, -s + b, -hsb], [-hsb, -s + b, -hsb], apex, [0.0, ny, -nside]); // North (-Z)
+    add_tri!([hsb, -s + b, hsb], [hsb, -s + b, -hsb], apex, [nside, ny, 0.0]); // East (+X)
+    add_tri!([-hsb, -s + b, hsb], [hsb, -s + b, hsb], apex, [0.0, ny, nside]); // South (+Z)
+    add_tri!([-hsb, -s + b, -hsb], [-hsb, -s + b, hsb], apex, [-nside, ny, 0.0]); // West (-X)
+
+    // Bottom Base Cap
+    add_quad!([-hsb, -s, -hsb], [-hsb, -s, hsb], [hsb, -s, hsb], [hsb, -s, -hsb], [0.0, -1.0, 0.0]);
+
+    // 4 Base Edge Chamfers
+    add_quad!([-hsb, -s, -hsb], [hsb, -s, -hsb], [hsb, -s + b, -hsb], [-hsb, -s + b, -hsb], [0.0, -n, -n]); // North
+    add_quad!([hsb, -s, -hsb], [hsb, -s, hsb], [hsb, -s + b, hsb], [hsb, -s + b, -hsb], [n, -n, 0.0]); // East
+    add_quad!([hsb, -s, hsb], [-hsb, -s, hsb], [-hsb, -s + b, hsb], [hsb, -s + b, hsb], [0.0, -n, n]); // South
+    add_quad!([-hsb, -s, hsb], [-hsb, -s, -hsb], [-hsb, -s + b, -hsb], [-hsb, -s + b, hsb], [-n, -n, 0.0]); // West
+
+    // 4 Base Corner Triangles
+    let n3 = 1.0 / 3.0f32.sqrt();
+    add_tri!([-hsb, -s, -hsb], [-hsb, -s + b, -hsb], [-hsb, -s, -hsb], [-n3, -n3, -n3]);
+    add_tri!([hsb, -s, -hsb], [hsb, -s, -hsb], [hsb, -s + b, -hsb], [n3, -n3, -n3]);
+    add_tri!([hsb, -s, hsb], [hsb, -s + b, hsb], [hsb, -s, hsb], [n3, -n3, n3]);
+    add_tri!([-hsb, -s, hsb], [-hsb, -s, hsb], [-hsb, -s + b, hsb], [-n3, -n3, n3]);
+
+    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+        .with_inserted_indices(Indices::U32(indices))
 }
 // ---------------------------------------------------------------------------
 // Coordinate helpers

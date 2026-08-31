@@ -798,7 +798,7 @@ pub fn setup_editor_ui(mut commands: Commands) {
 
                         // Instructions / shortcuts hint
                         sidebar.spawn((
-                            Text::new("Controls:\n- Shift+Click: Multi-Select\n- Box Drag (Layer): Multi-Select\n- Esc: Select Mode / Clear\n- L-Click: Place / Select\n- Drag (Stack): Move Block\n- R-Click: Delete Block\n- Tab: Toggle Z Mode\n- PgUp/PgDn: Change Z\n- Q / E: Rotate View 90°\n- WASD: Pan Camera"),
+                            Text::new("Controls:\n- Shift+Click: Multi-Select\n- Box Drag (Layer): Multi-Select\n- Esc: Select Mode / Clear\n- L-Click: Place / Select\n- Drag (Stack): Move Block\n- R-Click: Delete Block\n- Tab: Toggle Z Mode\n- PgUp/PgDn: Change Z\n- Q / E: Rotate View 90 deg\n- WASD: Pan Camera"),
                             TextFont::from_font_size(11.0),
                             TextColor(TEXT_MUTED),
                         ));

@@ -91,15 +91,24 @@ lets switch gears for a moment and work on styling. we want a layered styling so
     -if the combined jobect is meovable. round over the actual edges of the combined model
 
 
+
   
 :: TODO
 
 DONE-infinite z axis
     -raycast mode 
 DONE-level editor block selectionpreview fix pls
+DONE-pressing escape desselects block pallet, if nothing selecetd in block pallet deselects in edtior
+DONE-improve frame 0 state computations
+    -we save state -0.5 but then show state 0, but then what happens when we want to change state? do we change from state 0 or -0.5
+    -state after returning from test mode needs to reset back to state 0, or state -0.5 and recompute
 
 
--fix toolbar in level edtior
+-block inspector in block placement mode shows the block to be placed and changing properties changes the properties of the block to be place (new block instead of block info in this case)
+-blocks that can't be toggled immovable should have the toggle immoveable button grayed out
+-add undor redo support.. cmd z cmd shift z
+
+-fix toolbar in level edtior so it shows preview correctly (or switch to 3d cards instead)
 
 -level structure
     -allow organization by folder
@@ -116,13 +125,6 @@ DONE-level editor block selectionpreview fix pls
 
 
 
-
--pressing escape desselects block pallet, if nothing selecetd in block pallet deselects in edtior
-
-
--improve frame 0 state computations
-    -we save state -0.5 but then show state 0, but then what happens when we want to change state? do we change from state 0 or -0.5
-    -state after returning from test mode needs to reset back to state 0, or state -0.5 and recompute
 
 
 
