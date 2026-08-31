@@ -40,17 +40,6 @@
         -laser, moveable/immovabel (only laser surface can't be walked on)
         -goal block, moveable/immovable (no surface can be walked on)
 
--combined blocks ideally have their own custom representation... for now, just apply some cute texture on all blocks that are combined
-
--new block creation factory (not important right now)
-    -to facilitate combined block graphics, we need a block creation funciton that generates a custom model for combined blocks.
-    -the general factory has a couple of shapes it supports
-        -block
-        -mirror
-        -pyramid
-    -each shape has faces that coincide with the block walls, the faces shap may either be at triangle (2 edges) or a square (4 edges)
-    -coincididing faces get theri edges combined to create a unified volume
-    -if the combined jobect is meovable. round over the actual edges of the combined model
 
 
 
@@ -89,6 +78,19 @@ lets switch gears for a moment and work on styling. we want a layered styling so
   this visual language for block styling. we will layer on top of it. also can you propose anything else we can add
   to this language? I want felxibility for introducing new block types
 
+
+-combined blocks ideally have their own custom representation... for now, just apply some cute texture on all blocks that are combined
+-new block creation factory (not important right now)
+    -to facilitate combined block graphics, we need a block creation funciton that generates a custom model for combined blocks.
+    -the general factory has a couple of shapes it supports
+        -block
+        -mirror
+        -pyramid
+    -each shape has faces that coincide with the block walls, the faces shap may either be at triangle (2 edges) or a square (4 edges)
+    -coincididing faces get theri edges combined to create a unified volume
+    -if the combined jobect is meovable. round over the actual edges of the combined model
+
+
   
 :: TODO
 
@@ -97,8 +99,15 @@ DONE-infinite z axis
 DONE-level editor block selectionpreview fix pls
 
 
+-fix toolbar in level edtior
 
-
+-level structure
+    -allow organization by folder
+    -each level may have multiple versions and solutions
+    -probbaly just 1 folder = 1 level for your own organization sanity...
+    -solving a level manually saves a new solution, aut osolve also does this with adifferent postfix
+    -changing a level indicates existing solutions ar enull, saving ac hanged level deletes old saved solutions
+    -add some save a copy button that makes a new copy of the current level with date prefix or osmething
 
 -try web browser publish and shar ewith anton
 -add a little x y z gizmo at the origin so we can easily tell the level orientation

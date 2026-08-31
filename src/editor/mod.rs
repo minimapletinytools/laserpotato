@@ -79,6 +79,10 @@ pub struct EditorState {
     pub selected_body_ids: Vec<BodyId>,
     /// Currently dragging body ID on grid (for StackOnTop mode).
     pub dragging_body_id: Option<BodyId>,
+    /// Screen start coordinate for dragging a block (to enforce minimum drag threshold).
+    pub drag_start_cursor: Option<Vec2>,
+    /// Whether block dragging is currently active (drag distance exceeded threshold).
+    pub drag_active: bool,
     /// Screen start coordinate for drag box selection in FixedLayer mode.
     pub box_select_start: Option<Vec2>,
     /// Whether box selection is currently active.
@@ -113,6 +117,9 @@ pub struct EditorState {
     pub status_message: Option<(String, Timer)>,
 }
 
+pub const MIN_BLOCK_DRAG_PIXELS: f32 = 18.0;
+pub const MIN_BOX_SELECT_PIXELS: f32 = 10.0;
+
 impl Default for EditorState {
     fn default() -> Self {
         let mut locked_z_layers = std::collections::HashSet::new();
@@ -125,6 +132,8 @@ impl Default for EditorState {
             current_z: 0,
             selected_body_ids: Vec::new(),
             dragging_body_id: None,
+            drag_start_cursor: None,
+            drag_active: false,
             box_select_start: None,
             box_select_active: false,
             locked_z_layers,
@@ -646,7 +655,7 @@ fn editor_grid_interaction_system(
 
     let Ok((camera, camera_transform)) = camera_query.single() else { return };
 
-    let ignore_id = editor.dragging_body_id;
+    let ignore_id = if editor.drag_active { editor.dragging_body_id } else { None };
     let (target_cell, raw_hit_body_id) = match editor.z_mode {
         ZPlacementMode::StackOnTop => {
             let Some((cell, body_id)) = raycast_stack_on_top(camera, camera_transform, cursor_pos, &game.engine.world, editor.stage_ground_z(), ignore_id) else {
@@ -702,6 +711,8 @@ fn editor_grid_interaction_system(
                             game.engine.update_authoring_world(new_world);
                             editor.select_single(player_id);
                             editor.dragging_body_id = None;
+                            editor.drag_start_cursor = None;
+                            editor.drag_active = false;
                             editor.toast(format!("Relocated player character to ({}, {}, {}).", place_target.x, place_target.y, place_target.z));
                             editor.cached_solution = None;
                             return;
@@ -720,6 +731,8 @@ fn editor_grid_interaction_system(
                 game.engine.update_authoring_world(new_world);
                 editor.select_single(new_id);
                 editor.dragging_body_id = None;
+                editor.drag_start_cursor = None;
+                editor.drag_active = false;
                 editor.cached_solution = None;
                 if editor.z_mode == ZPlacementMode::StackOnTop && place_target.z > editor.stage_ground_z() {
                     editor.toast(format!("Stacked {:?} on top at ({}, {}, {})", kind, place_target.x, place_target.y, place_target.z));
@@ -758,11 +771,15 @@ fn editor_grid_interaction_system(
                     } else {
                         editor.select_single(body_id);
                         editor.dragging_body_id = Some(body_id);
+                        editor.drag_start_cursor = Some(cursor_pos);
+                        editor.drag_active = false;
                         editor.toast(format!("Selected block (ID {}).", body_id.0));
                     }
                 } else if !shift_held {
                     editor.clear_selection();
                     editor.dragging_body_id = None;
+                    editor.drag_start_cursor = None;
+                    editor.drag_active = false;
                 }
             }
         }
@@ -770,21 +787,30 @@ fn editor_grid_interaction_system(
         if editor.selected_kind.is_none() {
             if editor.z_mode == ZPlacementMode::FixedLayer {
                 if let Some(start) = editor.box_select_start {
-                    if cursor_pos.distance(start) > 6.0 {
+                    if cursor_pos.distance(start) >= MIN_BOX_SELECT_PIXELS {
                         editor.box_select_active = true;
                     }
                 }
             } else if let Some(drag_id) = editor.dragging_body_id {
-                // StackOnTop drag single block
-                if let Some(body) = game.engine.world.body(drag_id) {
-                    if body.anchor != cell_pos && can_move_body_to(&game.engine.world, drag_id, cell_pos) {
-                        if let Some(b) = game.engine.world.body_mut(drag_id) {
-                            b.anchor = cell_pos;
+                // StackOnTop: Check minimum drag distance before moving block
+                if let Some(start_pos) = editor.drag_start_cursor {
+                    if cursor_pos.distance(start_pos) >= MIN_BLOCK_DRAG_PIXELS {
+                        editor.drag_active = true;
+                    }
+                }
+
+                // Only move block once the drag threshold is reached
+                if editor.drag_active {
+                    if let Some(body) = game.engine.world.body(drag_id) {
+                        if body.anchor != cell_pos && can_move_body_to(&game.engine.world, drag_id, cell_pos) {
+                            if let Some(b) = game.engine.world.body_mut(drag_id) {
+                                b.anchor = cell_pos;
+                            }
+                            game.engine.world.sync_grid();
+                            let new_world = game.engine.world.clone();
+                            game.engine.update_authoring_world(new_world);
+                            editor.cached_solution = None;
                         }
-                        game.engine.world.sync_grid();
-                        let new_world = game.engine.world.clone();
-                        game.engine.update_authoring_world(new_world);
-                        editor.cached_solution = None;
                     }
                 }
             }
@@ -827,10 +853,17 @@ fn editor_grid_interaction_system(
             }
             editor.box_select_start = None;
             editor.box_select_active = false;
-        } else if let Some(drag_id) = editor.dragging_body_id.take() {
-            if let Some(body) = game.engine.world.body(drag_id) {
-                editor.toast(format!("Moved {:?} to ({}, {}, {})", body.kind, body.anchor.x, body.anchor.y, body.anchor.z));
+        } else {
+            if editor.drag_active {
+                if let Some(drag_id) = editor.dragging_body_id {
+                    if let Some(body) = game.engine.world.body(drag_id) {
+                        editor.toast(format!("Moved {:?} to ({}, {}, {}).", body.kind, body.anchor.x, body.anchor.y, body.anchor.z));
+                    }
+                }
             }
+            editor.dragging_body_id = None;
+            editor.drag_start_cursor = None;
+            editor.drag_active = false;
         }
     }
 
@@ -849,6 +882,8 @@ fn editor_grid_interaction_system(
                     editor.selected_body_ids.retain(|&x| x != id);
                     if editor.dragging_body_id == Some(id) {
                         editor.dragging_body_id = None;
+                        editor.drag_start_cursor = None;
+                        editor.drag_active = false;
                     }
                     game.engine.world.sync_grid();
                     let new_world = game.engine.world.clone();
@@ -1749,5 +1784,21 @@ mod tests {
         // Next escape reverts tool to select mode
         editor.selected_kind = None;
         assert!(editor.selected_kind.is_none());
+    }
+
+    #[test]
+    fn drag_threshold_test() {
+        let mut editor = EditorState::default();
+        let start_pos = Vec2::new(100.0, 100.0);
+        editor.drag_start_cursor = Some(start_pos);
+        editor.drag_active = false;
+
+        // Micro-jitter during click (e.g. 5 pixels away)
+        let micro_jitter = Vec2::new(103.0, 104.0);
+        assert!(micro_jitter.distance(start_pos) < MIN_BLOCK_DRAG_PIXELS);
+
+        // Real intentional drag (e.g. 25 pixels away)
+        let intentional_drag = Vec2::new(120.0, 115.0);
+        assert!(intentional_drag.distance(start_pos) >= MIN_BLOCK_DRAG_PIXELS);
     }
 }
