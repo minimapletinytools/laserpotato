@@ -1187,6 +1187,7 @@ pub fn update_editor_ui_system(
         Option<&ZModeToggleButton>,
         Option<&CombineButton>,
         Option<&UncombineButton>,
+        Option<&ToggleFixedButton>,
     )>,
 ) {
     // Show UI only in Editor mode
@@ -1291,8 +1292,17 @@ pub fn update_editor_ui_system(
     let has_any_combined = editor.selected_body_ids.iter().any(|&id| {
         game.engine.world.body(id).and_then(|b| b.combined_group).is_some()
     });
+    let can_toggle_fixed = selected_count > 0
+        && editor.selected_body_ids.iter().any(|&id| {
+            if let Some(body) = game.engine.world.body(id) {
+                let (can_m, can_f) = editor.allowed_fixed_state(body.kind);
+                can_m && can_f
+            } else {
+                false
+            }
+        });
 
-    for (mut bg, palette_opt, prop_opt, z_mode_opt, combine_opt, uncombine_opt) in &mut button_query {
+    for (mut bg, palette_opt, prop_opt, z_mode_opt, combine_opt, uncombine_opt, toggle_fixed_opt) in &mut button_query {
         if let Some(palette_btn) = palette_opt {
             bg.0 = if palette_btn.0 == editor.selected_kind {
                 BTN_ACTIVE
@@ -1336,6 +1346,12 @@ pub fn update_editor_ui_system(
             };
         } else if uncombine_opt.is_some() {
             bg.0 = if has_any_combined {
+                BTN_NORMAL
+            } else {
+                BTN_DISABLED
+            };
+        } else if toggle_fixed_opt.is_some() {
+            bg.0 = if can_toggle_fixed {
                 BTN_NORMAL
             } else {
                 BTN_DISABLED

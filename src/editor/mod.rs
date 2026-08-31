@@ -81,6 +81,8 @@ pub struct EditorState {
     pub dragging_body_id: Option<BodyId>,
     /// Screen start coordinate for dragging a block (to enforce minimum drag threshold).
     pub drag_start_cursor: Option<Vec2>,
+    /// Grid origin cell when starting a drag operation.
+    pub drag_origin_cell: Option<IVec3>,
     /// Whether block dragging is currently active (drag distance exceeded threshold).
     pub drag_active: bool,
     /// Screen start coordinate for drag box selection in FixedLayer mode.
@@ -133,6 +135,7 @@ impl Default for EditorState {
             selected_body_ids: Vec::new(),
             dragging_body_id: None,
             drag_start_cursor: None,
+            drag_origin_cell: None,
             drag_active: false,
             box_select_start: None,
             box_select_active: false,
@@ -522,6 +525,29 @@ fn can_move_body_to(world: &World, body_id: BodyId, target_anchor: IVec3) -> boo
     true
 }
 
+/// Helper to check if an entire selection of bodies can be moved by `delta` without colliding
+/// with any other non-selected bodies in the world.
+pub fn can_move_selection_by(world: &World, selected_ids: &[BodyId], delta: IVec3) -> bool {
+    if selected_ids.is_empty() || delta == IVec3::ZERO {
+        return false;
+    }
+    let sel_set: std::collections::HashSet<BodyId> = selected_ids.iter().copied().collect();
+    for &id in selected_ids {
+        if let Some(body) = world.body(id) {
+            let new_anchor = body.anchor + delta;
+            for local in &body.shape {
+                let world_cell = new_anchor + body.orientation.apply(*local);
+                if let Some(occ) = world.body_at(world_cell) {
+                    if !sel_set.contains(&occ.id) {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+    true
+}
+
 /// Fill a rectangular floor of `width` x `height` blocks at layer `z`.
 pub fn fill_floorplan(world: &mut World, width: i32, height: i32, z: i32) {
     use crate::sim::{TagKind, TagValue};
@@ -709,9 +735,10 @@ fn editor_grid_interaction_system(
                             game.engine.world.sync_grid();
                             let new_world = game.engine.world.clone();
                             game.engine.update_authoring_world(new_world);
-                            editor.select_single(player_id);
+                            editor.clear_selection();
                             editor.dragging_body_id = None;
                             editor.drag_start_cursor = None;
+                            editor.drag_origin_cell = None;
                             editor.drag_active = false;
                             editor.toast(format!("Relocated player character to ({}, {}, {}).", place_target.x, place_target.y, place_target.z));
                             editor.cached_solution = None;
@@ -729,9 +756,10 @@ fn editor_grid_interaction_system(
                 game.engine.world.sync_grid();
                 let new_world = game.engine.world.clone();
                 game.engine.update_authoring_world(new_world);
-                editor.select_single(new_id);
+                editor.clear_selection();
                 editor.dragging_body_id = None;
                 editor.drag_start_cursor = None;
+                editor.drag_origin_cell = None;
                 editor.drag_active = false;
                 editor.cached_solution = None;
                 if editor.z_mode == ZPlacementMode::StackOnTop && place_target.z > editor.stage_ground_z() {
@@ -746,20 +774,43 @@ fn editor_grid_interaction_system(
             // ===============================================================
             if editor.z_mode == ZPlacementMode::FixedLayer {
                 // Fixed Layer Mode
-                editor.box_select_start = Some(cursor_pos);
-                editor.box_select_active = false;
-
                 if let Some(body_id) = clicked_body_id {
                     if shift_held {
                         editor.toggle_selection(body_id);
                         let total = editor.selected_body_ids.len();
                         editor.toast(format!("Toggled selection (Total: {}).", total));
+                        editor.box_select_start = None;
+                        editor.box_select_active = false;
+                        editor.drag_start_cursor = None;
+                        editor.drag_origin_cell = None;
+                        editor.drag_active = false;
                     } else {
-                        editor.select_single(body_id);
-                        editor.toast(format!("Selected block (ID {}).", body_id.0));
+                        if !editor.is_selected(body_id) {
+                            editor.select_single(body_id);
+                            editor.toast(format!("Selected block (ID {}).", body_id.0));
+                        }
+                        // Start tracking drag for the entire selection
+                        editor.drag_start_cursor = Some(cursor_pos);
+                        editor.drag_origin_cell = Some(cell_pos);
+                        editor.drag_active = false;
+                        editor.box_select_start = None;
+                        editor.box_select_active = false;
                     }
-                } else if !shift_held {
+                } else if shift_held {
+                    // Shift-click on empty space: start additive box select
+                    editor.box_select_start = Some(cursor_pos);
+                    editor.box_select_active = false;
+                    editor.drag_start_cursor = None;
+                    editor.drag_origin_cell = None;
+                    editor.drag_active = false;
+                } else {
+                    // Normal click on empty space: clear selection & start box select
                     editor.clear_selection();
+                    editor.box_select_start = Some(cursor_pos);
+                    editor.box_select_active = false;
+                    editor.drag_start_cursor = None;
+                    editor.drag_origin_cell = None;
+                    editor.drag_active = false;
                 }
             } else {
                 // StackOnTop Select Mode
@@ -772,6 +823,7 @@ fn editor_grid_interaction_system(
                         editor.select_single(body_id);
                         editor.dragging_body_id = Some(body_id);
                         editor.drag_start_cursor = Some(cursor_pos);
+                        editor.drag_origin_cell = Some(cell_pos);
                         editor.drag_active = false;
                         editor.toast(format!("Selected block (ID {}).", body_id.0));
                     }
@@ -779,6 +831,7 @@ fn editor_grid_interaction_system(
                     editor.clear_selection();
                     editor.dragging_body_id = None;
                     editor.drag_start_cursor = None;
+                    editor.drag_origin_cell = None;
                     editor.drag_active = false;
                 }
             }
@@ -789,6 +842,28 @@ fn editor_grid_interaction_system(
                 if let Some(start) = editor.box_select_start {
                     if cursor_pos.distance(start) >= MIN_BOX_SELECT_PIXELS {
                         editor.box_select_active = true;
+                    }
+                } else if let Some(origin_cell) = editor.drag_origin_cell {
+                    if let Some(start_pos) = editor.drag_start_cursor {
+                        if cursor_pos.distance(start_pos) >= MIN_BLOCK_DRAG_PIXELS {
+                            editor.drag_active = true;
+                        }
+                    }
+
+                    if editor.drag_active {
+                        let delta = cell_pos - origin_cell;
+                        if (delta.x != 0 || delta.y != 0) && can_move_selection_by(&game.engine.world, &editor.selected_body_ids, delta) {
+                            for &id in &editor.selected_body_ids {
+                                if let Some(b) = game.engine.world.body_mut(id) {
+                                    b.anchor += delta;
+                                }
+                            }
+                            game.engine.world.sync_grid();
+                            let new_world = game.engine.world.clone();
+                            game.engine.update_authoring_world(new_world);
+                            editor.drag_origin_cell = Some(cell_pos);
+                            editor.cached_solution = None;
+                        }
                     }
                 }
             } else if let Some(drag_id) = editor.dragging_body_id {
@@ -850,9 +925,15 @@ fn editor_grid_interaction_system(
                         editor.toast(format!("Box selected {} block(s).", total));
                     }
                 }
+            } else if editor.drag_active {
+                let total = editor.selected_body_ids.len();
+                editor.toast(format!("Moved {} selected block(s).", total));
             }
             editor.box_select_start = None;
             editor.box_select_active = false;
+            editor.drag_start_cursor = None;
+            editor.drag_origin_cell = None;
+            editor.drag_active = false;
         } else {
             if editor.drag_active {
                 if let Some(drag_id) = editor.dragging_body_id {
@@ -863,6 +944,7 @@ fn editor_grid_interaction_system(
             }
             editor.dragging_body_id = None;
             editor.drag_start_cursor = None;
+            editor.drag_origin_cell = None;
             editor.drag_active = false;
         }
     }
@@ -1800,5 +1882,24 @@ mod tests {
         // Real intentional drag (e.g. 25 pixels away)
         let intentional_drag = Vec2::new(120.0, 115.0);
         assert!(intentional_drag.distance(start_pos) >= MIN_BLOCK_DRAG_PIXELS);
+    }
+
+    #[test]
+    fn can_move_selection_by_test() {
+        let mut world = World::new();
+        let b1 = world.spawn(BlockKind::Mirror, IVec3::new(1, 1, 0), vec![IVec3::ZERO]);
+        let b2 = world.spawn(BlockKind::Pushable, IVec3::new(2, 1, 0), vec![IVec3::ZERO]);
+        let _obstacle = world.spawn(BlockKind::Wall, IVec3::new(4, 1, 0), vec![IVec3::ZERO]);
+
+        let sel = vec![b1, b2];
+
+        // Move group by (+1, 0, 0) -> b1 moves to (2, 1), b2 moves to (3, 1) - no obstacle collision!
+        assert!(can_move_selection_by(&world, &sel, IVec3::new(1, 0, 0)));
+
+        // Move group by (+2, 0, 0) -> b2 would move to (4, 1), colliding with obstacle!
+        assert!(!can_move_selection_by(&world, &sel, IVec3::new(2, 0, 0)));
+
+        // Move group in Y direction (+0, +2, 0) -> valid
+        assert!(can_move_selection_by(&world, &sel, IVec3::new(0, 2, 0)));
     }
 }
