@@ -33,13 +33,82 @@ lets switch gears for a moment and work on styling. we want a layered styling so
 
   
 :: TODO
--pressing escape desselects block pallet, if nothing selecetd in block pallet deselects in edtior
+
+DONE-infinite z axis
+    -raycast mode 
 DONE-level editor block selectionpreview fix pls
+
+-understanding frame/state semanics
+    -frame n is a frame with a completely resolved state
+    -frame n* is is a frame with a partially resolved state, when fully resolved will become frame n+1
+    -level editor is frame "0*", and game starts at frame 1
+    -level editor actually allows showing both frame 0* and frame 1....  frame 1 is just a fake preview. when editing blocks, they must always show frame 0*
+    -if resolving to frame 1 pushes block movement onto the state update queue, stop the solver and display an error. the level is invalid and there is no frame 1 preview.
+
+-add support for "Floor" and "level size"
+    -floor tiles aren't anything special game logic wise but tehy get special treatement in the editor
+    -floor tiles, just regular tiles but maybe the look different (or maybe they just look like regular wall tiles)
+    -first make surr you can walk on top of tiles in general, well that should be a property of it, can walk on top property. THis property is actually a perf fact property... mirrors for example have 2 faces that can be walked on!
+    -floorplan pop up menu, lets you set a certain Z level filled with floor b0locks (default z=-1) up to some level size (w,h)... 0,0 is still bottom left corner
+        -you may need to update the default level to move the floor blocks down to z =-1
+    -add a "lock floor" button which takes a z level (auto set by the floorplan popup) and makes all blocks on that level not selectable.
+
+-improve selection
+    -create selection mode
+    -in both placement modes, alllow shift click to select multiple blocks
+    -in z layer placement mode, allow lcick + drag to multi select. clicknig on a block + dragging prioritizes box selection rather than move block
+        -in raycast placement mode, no box seleciton, click + dragging on a block moves it
+    -create a button that says "combine" that combines all block in a selection into 1 mega block IF all the blocks are moveable, (button is greyed out if they are not)
+
+-make level editor window resizeable if not already
+
+-create glass block (moveable/immoveable) transparent block that laser just passes through.
+
+
+-improve visual language for testing
+    -sharp corner block = immovable
+    -rounded corner block = pushable
+    -so we need botha sharp and round corner variant of mirror and laser and regular block
+    -in general moveable objects are brighter in color as well.
+    -for now, we have only the following blocks to support, so this will bethe set we mainly experiment with for our MVP
+        -block, moveable/immovable (can be walked on)
+        -glass block, moveable/immoveable (can be walked on)
+        -mirror, moveable/immoveable (2 surfaces can be walked on)
+        -laser, moveable/immovabel (only laser surface can't be walked on)
+        -goal block, moveable/immovable (no surface can be walked on)
+
+-combined blocks ideally have their own custom representation... for now, just apply some cute texture on all blocks that are combined
+
+-new block creation factory (not important right now)
+    -to facilitate combined block graphics, we need a block creation funciton that generates a custom model for combined blocks.
+    -the general factory has a couple of shapes it supports
+        -block
+        -mirror
+        -pyramid
+    -each shape has faces that coincide with the block walls, the faces shap may either be at triangle (2 edges) or a square (4 edges)
+    -coincididing faces get theri edges combined to create a unified volume
+    -if the combined jobect is meovable. round over the actual edges of the combined model
+
+
+
+
+
+
+
+-add a little x y z gizmo at the origin so we can easily tell the level orientation
+-add grid numbers along the x/y=0 axis 
+
+
+
+
+
+-pressing escape desselects block pallet, if nothing selecetd in block pallet deselects in edtior
+
 
 -improve frame 0 state computations
     -we save state -0.5 but then show state 0, but then what happens when we want to change state? do we change from state 0 or -0.5
     -state after returning from test mode needs to reset back to state 0, or state -0.5 and recompute
--get grid numbers to show correctly
+
 
 
 -do some research into building solve
