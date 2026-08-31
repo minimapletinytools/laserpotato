@@ -80,6 +80,15 @@ pub fn cast_all_lasers(world: &World) -> Vec<LaserSegment> {
         for _ in 0..MAX_RAY_LENGTH {
             // Check if this cell is occupied by a body.
             if let Some(body) = world.body_at(current) {
+                let local_incoming = body.orientation.inverse().apply(direction);
+                if let Some(struck_face) = crate::block_types::BlockFace::from_incoming_ray_dir(local_incoming) {
+                    if body.properties().face(struck_face).transmits_laser {
+                        cells.push(current);
+                        current += direction;
+                        continue;
+                    }
+                }
+
                 // Query generic per-face reflection property:
                 if let Some(reflected_dir) = body.properties().reflect_laser(direction, &body.orientation) {
                     queue.push((body.id, body.anchor, reflected_dir));

@@ -6,8 +6,7 @@ use std::hash::{Hash, Hasher};
 
 use glam::IVec3;
 
-use crate::block_types::BlockKind;
-use crate::sim::{Body, CubeRot, TagKind, World};
+use crate::sim::{Body, CubeRot, World};
 
 /// Compact representation of a single dynamic body's state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -17,6 +16,7 @@ pub struct CompactBodyState {
     pub anchor_y: i32,
     pub anchor_z: i32,
     pub orientation: CubeRot,
+    pub combined_group: Option<u32>,
     pub tags_hash: u64,
 }
 
@@ -32,6 +32,7 @@ impl CompactBodyState {
             anchor_y: body.anchor.y,
             anchor_z: body.anchor.z,
             orientation: body.canonical_orientation(),
+            combined_group: body.combined_group,
             tags_hash,
         }
     }
@@ -63,13 +64,30 @@ impl CanonicalState {
         for body in world.bodies() {
             if body.kind == BlockKind::Player {
                 player = Some(CompactBodyState::from_body(body));
-            } else if body.is_pushable() || !body.tags.has(TagKind::Fixed) {
+            } else if body.is_pushable() || !body.is_fixed() {
                 // Include any body that can move or change state
                 dynamic_bodies.push(CompactBodyState::from_body(body));
             }
         }
 
         // Sort dynamic bodies to ensure canonical order (e.g. interchangeable pushable crates)
+        dynamic_bodies.sort();
+
+        // Normalize combined_group IDs based on first appearance
+        let mut next_norm_id = 0;
+        let mut group_map = std::collections::HashMap::new();
+        for b in &mut dynamic_bodies {
+            if let Some(orig_id) = b.combined_group {
+                let norm_id = *group_map.entry(orig_id).or_insert_with(|| {
+                    let id = next_norm_id;
+                    next_norm_id += 1;
+                    id
+                });
+                b.combined_group = Some(norm_id);
+            }
+        }
+
+        // Re-sort after normalization in case IDs changed order
         dynamic_bodies.sort();
 
         Self {
@@ -153,5 +171,60 @@ mod tests {
             CanonicalState::from_world(&w2),
             "Flipping/rotating an isotropic pushable crate must produce the identical canonical state"
         );
+    }
+
+    #[test]
+    fn swapping_glass_blocks_is_interchangeable() {
+        let mut w1 = World::new();
+        w1.spawn(BlockKind::Glass, IVec3::new(1, 0, 0), vec![IVec3::ZERO]);
+        w1.spawn(BlockKind::Glass, IVec3::new(2, 0, 0), vec![IVec3::ZERO]);
+        
+        let mut w2 = World::new();
+        w2.spawn(BlockKind::Glass, IVec3::new(2, 0, 0), vec![IVec3::ZERO]);
+        w2.spawn(BlockKind::Glass, IVec3::new(1, 0, 0), vec![IVec3::ZERO]);
+        
+        assert_eq!(CanonicalState::from_world(&w1), CanonicalState::from_world(&w2));
+    }
+    
+    #[test]
+    fn combined_group_not_interchangeable() {
+        let mut w1 = World::new();
+        let g1 = w1.spawn(BlockKind::Glass, IVec3::new(1, 0, 0), vec![IVec3::ZERO]);
+        let _g2 = w1.spawn(BlockKind::Glass, IVec3::new(2, 0, 0), vec![IVec3::ZERO]);
+        w1.body_mut(g1).unwrap().combined_group = Some(1);
+        
+        let mut w2 = World::new();
+        let _g3 = w2.spawn(BlockKind::Glass, IVec3::new(1, 0, 0), vec![IVec3::ZERO]);
+        let g4 = w2.spawn(BlockKind::Glass, IVec3::new(2, 0, 0), vec![IVec3::ZERO]);
+        w2.body_mut(g4).unwrap().combined_group = Some(1);
+        
+        assert_ne!(CanonicalState::from_world(&w1), CanonicalState::from_world(&w2));
+    }
+    
+    #[test]
+    fn group_id_normalization() {
+        let mut w1 = World::new();
+        let g1 = w1.spawn(BlockKind::Glass, IVec3::new(1, 0, 0), vec![IVec3::ZERO]);
+        let g2 = w1.spawn(BlockKind::Glass, IVec3::new(2, 0, 0), vec![IVec3::ZERO]);
+        w1.body_mut(g1).unwrap().combined_group = Some(10);
+        w1.body_mut(g2).unwrap().combined_group = Some(10);
+        
+        let mut w2 = World::new();
+        let g3 = w2.spawn(BlockKind::Glass, IVec3::new(1, 0, 0), vec![IVec3::ZERO]);
+        let g4 = w2.spawn(BlockKind::Glass, IVec3::new(2, 0, 0), vec![IVec3::ZERO]);
+        w2.body_mut(g3).unwrap().combined_group = Some(20);
+        w2.body_mut(g4).unwrap().combined_group = Some(20);
+        
+        assert_eq!(CanonicalState::from_world(&w1), CanonicalState::from_world(&w2));
+    }
+    
+    #[test]
+    fn floor_excluded() {
+        let mut w1 = World::new();
+        w1.spawn(BlockKind::Floor, IVec3::new(1, 0, 0), vec![IVec3::ZERO]);
+        
+        let w2 = World::new();
+        
+        assert_eq!(CanonicalState::from_world(&w1), CanonicalState::from_world(&w2));
     }
 }

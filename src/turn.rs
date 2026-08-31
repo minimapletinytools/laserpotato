@@ -142,23 +142,23 @@ pub struct TurnEngine {
     undo_stack: Vec<World>,
     /// The world as it was at frame 0 (for reset).
     initial_world: World,
-    /// The raw authoring world at frame -0.5 (before frame 0 simulation).
-    pub raw_world: World,
-    /// Validation error detected during frame 0 computation (e.g. spontaneous movements).
+    /// The raw authoring world at frame 0* (before frame 1 simulation).
+    pub frame_zero_star: World,
+    /// Validation error detected during frame 1 computation (e.g. spontaneous movements).
     pub validation_error: Option<String>,
 }
 
-/// Compute Frame 0 from Frame -0.5 (raw authoring state).
+/// Compute Frame 1 from Frame 0* (raw authoring state).
 ///
 /// Performs the full initial state update (grid sync, fixpoint state resolution, laser raycasting,
-/// outcome evaluation). If any spontaneous movement or position change occurs during this frame 0 resolution,
+/// outcome evaluation). If any spontaneous movement or position change occurs during this frame 1 resolution,
 /// returns a validation error string indicating the level is invalid.
-pub fn compute_frame_zero(raw_world: &World) -> (World, Vec<LaserSegment>, GameOutcome, Option<String>) {
-    let mut frame0_world = raw_world.clone();
-    frame0_world.sync_grid();
+pub fn resolve_frame_one(frame_zero_star: &World) -> (World, Vec<LaserSegment>, GameOutcome, Option<String>) {
+    let mut frame1_world = frame_zero_star.clone();
+    frame1_world.sync_grid();
 
-    // Record pre-simulation body positions from frame -0.5
-    let pre_sim_bodies: Vec<(BodyId, IVec3, CubeRot)> = raw_world
+    // Record pre-simulation body positions from frame 0*
+    let pre_sim_bodies: Vec<(BodyId, IVec3, CubeRot)> = frame_zero_star
         .bodies()
         .iter()
         .map(|b| (b.id, b.anchor, b.orientation))
@@ -167,16 +167,16 @@ pub fn compute_frame_zero(raw_world: &World) -> (World, Vec<LaserSegment>, GameO
     // Multi-pass state / laser resolution fixpoint loop
     let mut laser_state = Vec::new();
     for _pass in 0..MAX_FIXPOINT_PASSES {
-        laser_state = laser::cast_all_lasers(&frame0_world);
+        laser_state = laser::cast_all_lasers(&frame1_world);
         break;
     }
 
-    let outcome = evaluate_outcome(&frame0_world, &laser_state);
+    let outcome = evaluate_outcome(&frame1_world, &laser_state);
 
-    // Verify no spontaneous movement occurred between Frame -0.5 and Frame 0:
+    // Verify no spontaneous movement occurred between Frame 0* and Frame 1:
     let mut moved_bodies = Vec::new();
     for &(id, orig_anchor, orig_rot) in &pre_sim_bodies {
-        if let Some(b) = frame0_world.body(id) {
+        if let Some(b) = frame1_world.body(id) {
             if b.anchor != orig_anchor || b.orientation != orig_rot {
                 moved_bodies.push(format!(
                     "{:?} (ID {}) moved from {:?} to {:?}",
@@ -188,7 +188,7 @@ pub fn compute_frame_zero(raw_world: &World) -> (World, Vec<LaserSegment>, GameO
 
     let validation_error = if !moved_bodies.is_empty() {
         let msg = format!(
-            "Level is invalid: spontaneous movement during Frame 0 resolution (Frame -0.5 → Frame 0): {}",
+            "Level is invalid: spontaneous movement during Frame 1 resolution (Frame 0* → Frame 1): {}",
             moved_bodies.join(", ")
         );
         eprintln!("[!] {}", msg);
@@ -197,21 +197,21 @@ pub fn compute_frame_zero(raw_world: &World) -> (World, Vec<LaserSegment>, GameO
         None
     };
 
-    (frame0_world, laser_state, outcome, validation_error)
+    (frame1_world, laser_state, outcome, validation_error)
 }
 
 impl TurnEngine {
     pub fn new(world: World) -> Self {
-        let raw_world = world.clone();
-        let (frame0_world, laser_state, outcome, validation_error) = compute_frame_zero(&raw_world);
-        let initial_world = frame0_world.clone();
+        let frame_zero_star = world.clone();
+        let (frame1_world, laser_state, outcome, validation_error) = resolve_frame_one(&frame_zero_star);
+        let initial_world = frame1_world.clone();
         Self {
-            world: frame0_world,
+            world: frame1_world,
             laser_state,
             outcome,
             undo_stack: Vec::new(),
             initial_world,
-            raw_world,
+            frame_zero_star,
             validation_error,
         }
     }
@@ -260,9 +260,9 @@ impl TurnEngine {
     }
 
     fn reset(&mut self) -> TurnResult {
-        let (frame0_world, laser_state, outcome, validation_error) = compute_frame_zero(&self.raw_world);
-        self.world = frame0_world.clone();
-        self.initial_world = frame0_world;
+        let (frame1_world, laser_state, outcome, validation_error) = resolve_frame_one(&self.frame_zero_star);
+        self.world = frame1_world.clone();
+        self.initial_world = frame1_world;
         self.undo_stack.clear();
         self.laser_state = laser_state;
         self.outcome = outcome;
@@ -428,7 +428,7 @@ fn evaluate_outcome(world: &World, laser_state: &[LaserSegment]) -> GameOutcome 
 /// body that must also move (transitively pushed). Returns `None` if the
 /// chain is blocked by an immovable body.
 fn collect_push_chain(world: &World, mover_id: BodyId, direction: IVec3) -> Option<Vec<BodyId>> {
-    let mut chain = vec![mover_id];
+    let mut chain = world.combined_group_members(mover_id);
     let mut i = 0;
 
     while i < chain.len() {
@@ -445,7 +445,13 @@ fn collect_push_chain(world: &World, mover_id: BodyId, direction: IVec3) -> Opti
                 if !occupant.is_pushable() {
                     return None;
                 }
-                chain.push(occupant_id);
+                
+                let group_members = world.combined_group_members(occupant_id);
+                for member in group_members {
+                    if !chain.contains(&member) {
+                        chain.push(member);
+                    }
+                }
             }
         }
         i += 1;
@@ -764,8 +770,8 @@ mod tests {
 
         let engine = TurnEngine::new(world);
 
-        // 1. Frame -0.5 is preserved in raw_world
-        assert_eq!(engine.raw_world.bodies().len(), 3);
+        // 1. Frame 0* is preserved in frame_zero_star
+        assert_eq!(engine.frame_zero_star.bodies().len(), 3);
 
         // 2. Frame 0 is valid and has computed lasers & outcome
         assert!(engine.is_valid());

@@ -381,6 +381,7 @@ pub struct Body {
     pub orientation: CubeRot,
     pub shape: Vec<IVec3>,
     pub tags: TagSet,
+    pub combined_group: Option<u32>,
 }
 
 impl Body {
@@ -392,6 +393,7 @@ impl Body {
             orientation: CubeRot::IDENTITY,
             shape,
             tags: TagSet::new(),
+            combined_group: None,
         }
     }
 
@@ -407,7 +409,7 @@ impl Body {
     /// taking into account tags (such as TagKind::Fixed).
     pub fn properties(&self) -> crate::block_types::BlockProperties {
         let mut props = self.kind.default_properties();
-        if self.tags.has(TagKind::Fixed) || matches!(self.kind, BlockKind::Wall | BlockKind::Goal) {
+        if self.tags.has(TagKind::Fixed) || matches!(self.kind, BlockKind::Wall | BlockKind::Floor) {
             props.is_pushable = false;
         } else if self.tags.has(TagKind::Pushable) {
             props.is_pushable = true;
@@ -422,7 +424,7 @@ impl Body {
 
     /// Whether this specific body is fixed/stationary.
     pub fn is_fixed(&self) -> bool {
-        self.tags.has(TagKind::Fixed) || matches!(self.kind, BlockKind::Wall | BlockKind::Goal)
+        self.tags.has(TagKind::Fixed) || matches!(self.kind, BlockKind::Wall | BlockKind::Floor)
     }
 
     /// Computes the canonical orientation representing the equivalence class of this body's
@@ -534,6 +536,7 @@ pub struct World {
     grid: Grid,
     next_id: u32,
     player_id: Option<BodyId>,
+    next_group_id: u32,
 }
 
 impl World {
@@ -595,6 +598,28 @@ impl World {
     /// spatial index in sync.
     pub fn sync_grid(&mut self) {
         self.grid.rebuild(&self.bodies);
+    }
+
+    pub fn next_combined_group_id(&mut self) -> u32 {
+        let id = self.next_group_id;
+        self.next_group_id += 1;
+        id
+    }
+
+    pub fn combined_group_members(&self, body_id: BodyId) -> Vec<BodyId> {
+        let mut members = Vec::new();
+        if let Some(body) = self.body(body_id) {
+            if let Some(group_id) = body.combined_group {
+                for other in &self.bodies {
+                    if other.combined_group == Some(group_id) {
+                        members.push(other.id);
+                    }
+                }
+            } else {
+                members.push(body_id);
+            }
+        }
+        members
     }
 }
 

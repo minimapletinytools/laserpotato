@@ -104,6 +104,8 @@ pub struct LevelBodyData {
     pub anchor: [i32; 3],
     pub orientation: CubeRot,
     pub fixed: bool,
+    #[serde(default)]
+    pub combined_group: Option<u32>,
 }
 
 /// Serializable puzzle level data.
@@ -123,6 +125,7 @@ impl LevelData {
                 anchor: [body.anchor.x, body.anchor.y, body.anchor.z],
                 orientation: body.orientation,
                 fixed: body.is_fixed(),
+                combined_group: body.combined_group,
             });
         }
         Self {
@@ -134,6 +137,7 @@ impl LevelData {
     /// Reconstruct a playable [`World`] from this [`LevelData`].
     pub fn to_world(&self) -> World {
         let mut world = World::new();
+        let mut max_group = 0;
         for b in &self.bodies {
             let id = world.spawn(
                 b.kind,
@@ -145,8 +149,20 @@ impl LevelData {
                 if b.fixed {
                     body.tags.set(TagKind::Fixed, TagValue::Unit);
                 }
+                body.combined_group = b.combined_group;
+                if let Some(g) = b.combined_group {
+                    if g >= max_group {
+                        max_group = g + 1;
+                    }
+                }
             }
         }
+        // Hack: next_group_id isn't public, so we'll just set it via loop if we could.
+        // Wait, world doesn't have a way to set next_group_id. I will just loop to catch up.
+        while world.next_combined_group_id() <= max_group {
+            // catch up
+        }
+        
         world.sync_grid();
         world
     }

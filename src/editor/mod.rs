@@ -120,9 +120,10 @@ impl EditorState {
     /// Allowed (moveable, fixed) property configuration for a given block kind.
     pub fn allowed_fixed_state(&self, kind: BlockKind) -> (bool, bool) {
         match kind {
-            BlockKind::Wall | BlockKind::Goal => (false, true),
+            BlockKind::Wall | BlockKind::Floor => (false, true),
             BlockKind::Player => (true, false),
-            BlockKind::Mirror | BlockKind::LaserSource | BlockKind::Pushable => (true, true),
+            BlockKind::Mirror | BlockKind::LaserSource | BlockKind::Pushable
+                | BlockKind::Goal | BlockKind::Glass => (true, true),
         }
     }
 
@@ -205,15 +206,46 @@ pub fn update_palette_3d_preview(
 
         let (target_mesh, target_mat) = match selected_kind {
             BlockKind::Player => (render_assets.player_mesh.clone(), render_assets.player_mat.clone()),
-            BlockKind::Goal => (render_assets.pyramid_mesh.clone(), render_assets.goal_mat.clone()),
+            BlockKind::Goal => {
+                let m = if is_moveable {
+                    render_assets.moveable_goal_mat.clone()
+                } else {
+                    render_assets.goal_mat.clone()
+                };
+                let mesh = if is_moveable {
+                    render_assets.rounded_pyramid_mesh.clone()
+                } else {
+                    render_assets.pyramid_mesh.clone()
+                };
+                (mesh, m)
+            }
             BlockKind::Wall => (render_assets.cube_mesh.clone(), render_assets.fixed_wall_mat.clone()),
+            BlockKind::Floor => (render_assets.cube_mesh.clone(), render_assets.floor_mat.clone()),
+            BlockKind::Glass => {
+                let m = if is_moveable {
+                    render_assets.moveable_glass_mat.clone()
+                } else {
+                    render_assets.fixed_glass_mat.clone()
+                };
+                let mesh = if is_moveable {
+                    render_assets.rounded_cube_mesh.clone()
+                } else {
+                    render_assets.cube_mesh.clone()
+                };
+                (mesh, m)
+            }
             BlockKind::Pushable => {
                 let m = if is_moveable {
                     render_assets.moveable_pushable_mat.clone()
                 } else {
                     render_assets.fixed_pushable_mat.clone()
                 };
-                (render_assets.cube_mesh.clone(), m)
+                let mesh = if is_moveable {
+                    render_assets.rounded_cube_mesh.clone()
+                } else {
+                    render_assets.cube_mesh.clone()
+                };
+                (mesh, m)
             }
             BlockKind::Mirror => {
                 let m = if is_moveable {
@@ -221,7 +253,12 @@ pub fn update_palette_3d_preview(
                 } else {
                     render_assets.fixed_mirror_mat.clone()
                 };
-                (render_assets.mirror_mesh.clone(), m)
+                let mesh = if is_moveable {
+                    render_assets.rounded_mirror_mesh.clone()
+                } else {
+                    render_assets.mirror_mesh.clone()
+                };
+                (mesh, m)
             }
             BlockKind::LaserSource => {
                 let m = if is_moveable {
@@ -229,7 +266,12 @@ pub fn update_palette_3d_preview(
                 } else {
                     render_assets.fixed_laser_mat.clone()
                 };
-                (render_assets.cube_mesh.clone(), m)
+                let mesh = if is_moveable {
+                    render_assets.rounded_cube_mesh.clone()
+                } else {
+                    render_assets.cube_mesh.clone()
+                };
+                (mesh, m)
             }
         };
 

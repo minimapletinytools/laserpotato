@@ -168,6 +168,7 @@ fn main() {
                 render::animate_laser_pfx,
                 render::draw_coordinate_gizmo,
                 render::draw_grid_gizmos,
+                render::draw_combined_group_gizmos,
                 update_victory_ui,
                 screenshot_system,
             ),

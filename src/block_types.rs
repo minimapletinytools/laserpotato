@@ -106,12 +106,18 @@ pub struct FaceProperties {
     ///
     /// If `None`, this face is non-reflective and absorbs/blocks the beam.
     pub reflects_towards: Option<IVec3>,
+    /// Whether entities can walk on this face.
+    pub walkable: bool,
+    /// Whether this face transmits lasers instead of blocking or reflecting them.
+    pub transmits_laser: bool,
 }
 
 impl Default for FaceProperties {
     fn default() -> Self {
         Self {
             reflects_towards: None,
+            walkable: true,
+            transmits_laser: false,
         }
     }
 }
@@ -121,6 +127,8 @@ impl FaceProperties {
     pub const fn none() -> Self {
         Self {
             reflects_towards: None,
+            walkable: true,
+            transmits_laser: false,
         }
     }
 
@@ -128,6 +136,8 @@ impl FaceProperties {
     pub const fn reflects_to(out_dir: IVec3) -> Self {
         Self {
             reflects_towards: Some(out_dir),
+            walkable: false,
+            transmits_laser: false,
         }
     }
 
@@ -135,6 +145,8 @@ impl FaceProperties {
     pub fn transform(&self, rot: &CubeRot) -> Self {
         Self {
             reflects_towards: self.reflects_towards.map(|d| rot.apply(d)),
+            walkable: self.walkable,
+            transmits_laser: self.transmits_laser,
         }
     }
 
@@ -145,6 +157,8 @@ impl FaceProperties {
                 let dot = d.dot(plane_normal);
                 d - 2 * dot * plane_normal
             }),
+            walkable: self.walkable,
+            transmits_laser: self.transmits_laser,
         }
     }
 }
@@ -301,8 +315,12 @@ pub enum BlockKind {
     Player,
     /// Immovable wall / boundary.
     Wall,
+    /// Floor tile, walkable and solid.
+    Floor,
     /// Standard pushable crate.
     Pushable,
+    /// Pushable glass block that transmits lasers.
+    Glass,
     /// Single-sided 45° reflector prism.
     ///
     /// In local space:
@@ -330,22 +348,46 @@ impl BlockKind {
                 props.is_pushable = false;
                 props.movement_priority = 100;
             }
+            Self::Floor => {
+                props.is_pushable = false;
+                props.is_solid = true;
+                props.movement_priority = 100;
+                // All faces walkable by default
+            }
             Self::Pushable => {
                 props.is_pushable = true;
                 props.movement_priority = 100;
             }
-            Self::Goal => {
-                props.is_pushable = false;
+            Self::Glass => {
+                props.is_pushable = true;
+                props.is_solid = true;
                 props.movement_priority = 100;
+                for face in BlockFace::ALL {
+                    props.face_mut(face).transmits_laser = true;
+                }
+            }
+            Self::Goal => {
+                props.is_pushable = true;
+                props.movement_priority = 100;
+                for face in BlockFace::ALL {
+                    props.face_mut(face).walkable = false;
+                }
             }
             Self::LaserSource => {
                 props.is_pushable = true;
                 props.emits_laser_towards = Some(IVec3::Y);
                 props.movement_priority = 100;
+                props.face_mut(BlockFace::PosY).walkable = false;
             }
             Self::Mirror => {
                 props.is_pushable = true;
                 props.movement_priority = 100;
+
+                for face in BlockFace::ALL {
+                    props.face_mut(face).walkable = false;
+                }
+                props.face_mut(BlockFace::NegX).walkable = true;
+                props.face_mut(BlockFace::PosY).walkable = true;
 
                 // Single-sided reflective hypotenuse (North-West apex, South-East facing "/"):
                 // 1. Incoming ray traveling +Y (North, enters NegY face) -> reflects +X (East)
@@ -383,7 +425,9 @@ impl fmt::Display for BlockKind {
         match self {
             Self::Player => write!(f, "Player"),
             Self::Wall => write!(f, "Wall"),
+            Self::Floor => write!(f, "Floor"),
             Self::Pushable => write!(f, "Pushable"),
+            Self::Glass => write!(f, "Glass"),
             Self::Mirror => write!(f, "Mirror"),
             Self::LaserSource => write!(f, "LaserSource"),
             Self::Goal => write!(f, "Goal"),

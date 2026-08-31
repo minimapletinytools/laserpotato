@@ -839,7 +839,9 @@ pub fn update_editor_ui_system(
                 BlockKind::LaserSource => format!("Laser Source ({})", prop_str),
                 BlockKind::Pushable => format!("Pushable Crate ({})", prop_str),
                 BlockKind::Wall => "Wall (Stationary)".into(),
-                BlockKind::Goal => "Goal Pyramid (Stationary)".into(),
+                BlockKind::Floor => "Floor (Stationary)".into(),
+                BlockKind::Goal => format!("Goal Pyramid ({})", prop_str),
+                BlockKind::Glass => format!("Glass Block ({})", prop_str),
             };
             text.0 = icon_name;
         } else {

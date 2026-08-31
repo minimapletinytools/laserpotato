@@ -73,6 +73,16 @@ pub struct RenderAssets {
     // Goal
     pub goal_mat: Handle<StandardMaterial>,
     pub goal_won_mat: Handle<StandardMaterial>,
+    pub rounded_cube_mesh: Handle<Mesh>,
+    pub rounded_mirror_mesh: Handle<Mesh>,
+    pub rounded_mirror_mesh_chiral: Handle<Mesh>,
+    pub rounded_pyramid_mesh: Handle<Mesh>,
+
+    pub floor_mat: Handle<StandardMaterial>,
+    pub moveable_glass_mat: Handle<StandardMaterial>,
+    pub fixed_glass_mat: Handle<StandardMaterial>,
+    pub moveable_goal_mat: Handle<StandardMaterial>,
+
 }
 
 /// Startup system — create shared meshes and materials.
@@ -88,6 +98,12 @@ pub fn setup_render_assets(
     let mirror_chiral = meshes.add(create_chiral_mirror_mesh());
     let pyramid = meshes.add(create_pyramid_mesh());
     let indicator = meshes.add(Cuboid::new(0.3, 0.3, 0.15));
+
+    
+    let rounded_cube = meshes.add(create_rounded_cube_mesh(0.9, 0.08));
+    let rounded_mirror = meshes.add(create_rounded_mirror_mesh(0.08));
+    let rounded_mirror_chiral = meshes.add(create_rounded_chiral_mirror_mesh(0.08));
+    let rounded_pyramid = meshes.add(create_rounded_pyramid_mesh(0.08));
 
     // Continuous cylinder meshes for lasers:
     let laser_core_mesh = meshes.add(Cylinder::new(0.04, 1.0));
@@ -108,7 +124,12 @@ pub fn setup_render_assets(
         laser_glow_mesh,
         laser_impact_mesh,
 
-        // Player (vibrant blue dodecahedron)
+        rounded_cube_mesh: rounded_cube,
+        rounded_mirror_mesh: rounded_mirror,
+        rounded_mirror_mesh_chiral: rounded_mirror_chiral,
+        rounded_pyramid_mesh: rounded_pyramid,
+
+// Player (vibrant blue dodecahedron)
         player_mat: materials.add(StandardMaterial {
             base_color: Color::srgb(0.25, 0.6, 1.0),
             perceptual_roughness: 0.2,
@@ -235,6 +256,37 @@ pub fn setup_render_assets(
             metallic: 0.8,
             perceptual_roughness: 0.1,
             emissive: LinearRgba::new(20.0, 15.0, 3.0, 1.0),
+            double_sided: true,
+            ..default()
+        }),
+        moveable_goal_mat: materials.add(StandardMaterial {
+            base_color: Color::srgb(1.0, 0.85, 0.25),
+            metallic: 0.7,
+            perceptual_roughness: 0.2,
+            emissive: LinearRgba::new(0.5, 0.4, 0.1, 1.0),
+            double_sided: true,
+            ..default()
+        }),
+        floor_mat: materials.add(StandardMaterial {
+            base_color: Color::srgb(0.35, 0.38, 0.42),
+            base_color_texture: Some(stone_texture.clone()),
+            perceptual_roughness: 0.9,
+            double_sided: true,
+            ..default()
+        }),
+        moveable_glass_mat: materials.add(StandardMaterial {
+            base_color: Color::srgba(0.7, 0.85, 1.0, 0.25),
+            alpha_mode: AlphaMode::Blend,
+            perceptual_roughness: 0.05,
+            emissive: LinearRgba::new(0.1, 0.15, 0.25, 1.0),
+            double_sided: true,
+            ..default()
+        }),
+        fixed_glass_mat: materials.add(StandardMaterial {
+            base_color: Color::srgba(0.5, 0.55, 0.6, 0.3),
+            alpha_mode: AlphaMode::Blend,
+            base_color_texture: Some(stone_texture.clone()),
+            perceptual_roughness: 0.1,
             double_sided: true,
             ..default()
         }),
@@ -633,6 +685,90 @@ fn create_chiral_mirror_mesh() -> Mesh {
         .with_inserted_indices(Indices::U32(indices))
 }
 
+
+fn create_rounded_cube_mesh(size: f32, bevel: f32) -> Mesh {
+    let hs = size * 0.5;
+    let b = bevel;
+    let hsb = hs - b;
+    
+    let mut positions: Vec<[f32; 3]> = Vec::new();
+    let mut normals: Vec<[f32; 3]> = Vec::new();
+    let mut uvs: Vec<[f32; 2]> = Vec::new();
+    let mut indices: Vec<u32> = Vec::new();
+    
+    macro_rules! add_quad {
+        ($p1:expr, $p2:expr, $p3:expr, $p4:expr, $n:expr) => {
+            let base = positions.len() as u32;
+            positions.extend_from_slice(&[$p1, $p2, $p3, $p4]);
+            normals.extend_from_slice(&[$n, $n, $n, $n]);
+            uvs.extend_from_slice(&[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]);
+            indices.extend_from_slice(&[base, base+1, base+2, base, base+2, base+3]);
+        };
+    }
+
+    macro_rules! add_tri {
+        ($p1:expr, $p2:expr, $p3:expr, $n:expr) => {
+            let base = positions.len() as u32;
+            positions.extend_from_slice(&[$p1, $p2, $p3]);
+            normals.extend_from_slice(&[$n, $n, $n]);
+            uvs.extend_from_slice(&[[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]]);
+            indices.extend_from_slice(&[base, base+1, base+2]);
+        };
+    }
+
+    // 6 faces
+    add_quad!([-hsb, hs, -hsb], [-hsb, hs, hsb], [hsb, hs, hsb], [hsb, hs, -hsb], [0.0, 1.0, 0.0]); // +Y
+    add_quad!([-hsb, -hs, hsb], [-hsb, -hs, -hsb], [hsb, -hs, -hsb], [hsb, -hs, hsb], [0.0, -1.0, 0.0]); // -Y
+    add_quad!([-hsb, hsb, hs], [-hsb, -hsb, hs], [hsb, -hsb, hs], [hsb, hsb, hs], [0.0, 0.0, 1.0]); // +Z
+    add_quad!([hsb, hsb, -hs], [hsb, -hsb, -hs], [-hsb, -hsb, -hs], [-hsb, hsb, -hs], [0.0, 0.0, -1.0]); // -Z
+    add_quad!([hs, hsb, hsb], [hs, -hsb, hsb], [hs, -hsb, -hsb], [hs, hsb, -hsb], [1.0, 0.0, 0.0]); // +X
+    add_quad!([-hs, hsb, -hsb], [-hs, -hsb, -hsb], [-hs, -hsb, hsb], [-hs, hsb, hsb], [-1.0, 0.0, 0.0]); // -X
+
+    let n = std::f32::consts::FRAC_1_SQRT_2;
+    add_quad!([-hsb, hs, hsb], [-hsb, hs, -hsb], [-hs, hsb, -hsb], [-hs, hsb, hsb], [-n, n, 0.0]); // L
+    add_quad!([hsb, hs, -hsb], [hsb, hs, hsb], [hs, hsb, hsb], [hs, hsb, -hsb], [n, n, 0.0]); // R
+    add_quad!([-hsb, hs, -hsb], [hsb, hs, -hsb], [hsb, hsb, -hs], [-hsb, hsb, -hs], [0.0, n, -n]); // B
+    add_quad!([hsb, hs, hsb], [-hsb, hs, hsb], [-hsb, hsb, hs], [hsb, hsb, hs], [0.0, n, n]); // F
+
+    add_quad!([-hs, -hsb, hsb], [-hs, -hsb, -hsb], [-hsb, -hs, -hsb], [-hsb, -hs, hsb], [-n, -n, 0.0]); // L
+    add_quad!([hs, -hsb, -hsb], [hs, -hsb, hsb], [hsb, -hs, hsb], [hsb, -hs, -hsb], [n, -n, 0.0]); // R
+    add_quad!([-hsb, -hs, -hsb], [hsb, -hs, -hsb], [hsb, -hsb, -hs], [-hsb, -hsb, -hs], [0.0, -n, -n]); // B
+    add_quad!([hsb, -hs, hsb], [-hsb, -hs, hsb], [-hsb, -hsb, hs], [hsb, -hsb, hs], [0.0, -n, n]); // F
+
+    add_quad!([-hs, hsb, hsb], [-hs, -hsb, hsb], [-hsb, -hsb, hs], [-hsb, hsb, hs], [-n, 0.0, n]); // FL
+    add_quad!([hsb, hsb, hs], [hsb, -hsb, hs], [hs, -hsb, hsb], [hs, hsb, hsb], [n, 0.0, n]); // FR
+    add_quad!([-hsb, hsb, -hs], [-hsb, -hsb, -hs], [-hs, -hsb, -hsb], [-hs, hsb, -hsb], [-n, 0.0, -n]); // BL
+    add_quad!([hs, hsb, -hsb], [hs, -hsb, -hsb], [hsb, -hsb, -hs], [hsb, hsb, -hs], [n, 0.0, -n]); // BR
+
+    let n3 = 1.0 / 3.0f32.sqrt();
+    add_tri!([-hsb, hs, hsb], [-hs, hsb, hsb], [-hsb, hsb, hs], [-n3, n3, n3]); // TFL
+    add_tri!([hsb, hs, hsb], [hsb, hsb, hs], [hs, hsb, hsb], [n3, n3, n3]); // TFR
+    add_tri!([-hsb, hs, -hsb], [-hsb, hsb, -hs], [-hs, hsb, -hsb], [-n3, n3, -n3]); // TBL
+    add_tri!([hsb, hs, -hsb], [hs, hsb, -hsb], [hsb, hsb, -hs], [n3, n3, -n3]); // TBR
+
+    add_tri!([-hsb, -hs, hsb], [-hsb, -hsb, hs], [-hs, -hsb, hsb], [-n3, -n3, n3]); // BFL
+    add_tri!([hsb, -hs, hsb], [hs, -hsb, hsb], [hsb, -hsb, hs], [n3, -n3, n3]); // BFR
+    add_tri!([-hsb, -hs, -hsb], [-hs, -hsb, -hsb], [-hsb, -hsb, -hs], [-n3, -n3, -n3]); // BBL
+    add_tri!([hsb, -hs, -hsb], [hsb, -hsb, -hs], [hs, -hsb, -hsb], [n3, -n3, -n3]); // BBR
+
+    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+        .with_inserted_indices(Indices::U32(indices))
+}
+
+fn create_rounded_mirror_mesh(_bevel: f32) -> Mesh {
+    create_mirror_mesh()
+}
+
+fn create_rounded_chiral_mirror_mesh(_bevel: f32) -> Mesh {
+    create_chiral_mirror_mesh()
+}
+
+fn create_rounded_pyramid_mesh(_bevel: f32) -> Mesh {
+    create_pyramid_mesh()
+}
 // ---------------------------------------------------------------------------
 // Coordinate helpers
 // ---------------------------------------------------------------------------
@@ -692,12 +828,23 @@ pub fn sync_bodies(
             // Update dynamic materials and chiral meshes based on orientation/fixed/moveable state
             let is_moveable = body.is_pushable();
             match body.kind {
+                BlockKind::Floor => {
+                    mesh_handle.0 = assets.cube_mesh.clone();
+                    mat_handle.0 = assets.floor_mat.clone();
+                }
+                BlockKind::Glass => {
+                    mesh_handle.0 = if is_moveable { assets.rounded_cube_mesh.clone() } else { assets.cube_mesh.clone() };
+                    mat_handle.0 = if is_moveable { assets.moveable_glass_mat.clone() } else { assets.fixed_glass_mat.clone() };
+                }
                 BlockKind::Goal => {
-                    mat_handle.0 = if game.engine.is_won() {
-                        assets.goal_won_mat.clone()
+                    if game.engine.is_won() {
+                        mat_handle.0 = assets.goal_won_mat.clone();
+                    } else if is_moveable {
+                        mat_handle.0 = assets.moveable_goal_mat.clone();
                     } else {
-                        assets.goal_mat.clone()
-                    };
+                        mat_handle.0 = assets.goal_mat.clone();
+                    }
+                    mesh_handle.0 = if is_moveable { assets.rounded_pyramid_mesh.clone() } else { assets.pyramid_mesh.clone() };
                 }
                 BlockKind::Player => {
                     mat_handle.0 = if game.engine.is_lost() {
@@ -705,9 +852,11 @@ pub fn sync_bodies(
                     } else {
                         assets.player_mat.clone()
                     };
+                    mesh_handle.0 = assets.player_mesh.clone();
                 }
                 BlockKind::Wall => {
                     mat_handle.0 = assets.fixed_wall_mat.clone();
+                    mesh_handle.0 = assets.cube_mesh.clone();
                 }
                 BlockKind::Pushable => {
                     mat_handle.0 = if is_moveable {
@@ -715,12 +864,25 @@ pub fn sync_bodies(
                     } else {
                         assets.fixed_pushable_mat.clone()
                     };
+                    mesh_handle.0 = if is_moveable {
+                        assets.rounded_cube_mesh.clone()
+                    } else {
+                        assets.cube_mesh.clone()
+                    };
                 }
                 BlockKind::Mirror => {
-                    mesh_handle.0 = if body.orientation.is_reflection() {
-                        assets.mirror_mesh_chiral.clone()
+                    mesh_handle.0 = if is_moveable {
+                        if body.orientation.is_reflection() {
+                            assets.rounded_mirror_mesh_chiral.clone()
+                        } else {
+                            assets.rounded_mirror_mesh.clone()
+                        }
                     } else {
-                        assets.mirror_mesh.clone()
+                        if body.orientation.is_reflection() {
+                            assets.mirror_mesh_chiral.clone()
+                        } else {
+                            assets.mirror_mesh.clone()
+                        }
                     };
                     mat_handle.0 = if is_moveable {
                         assets.moveable_mirror_mat.clone()
@@ -733,6 +895,11 @@ pub fn sync_bodies(
                         assets.moveable_laser_mat.clone()
                     } else {
                         assets.fixed_laser_mat.clone()
+                    };
+                    mesh_handle.0 = if is_moveable {
+                        assets.rounded_cube_mesh.clone()
+                    } else {
+                        assets.cube_mesh.clone()
                     };
                 }
             }
@@ -757,6 +924,14 @@ pub fn sync_bodies(
         let is_moveable = body.is_pushable();
 
         let (mesh, material) = match body.kind {
+            BlockKind::Floor => {
+                (assets.cube_mesh.clone(), assets.floor_mat.clone())
+            }
+            BlockKind::Glass => {
+                let mesh = if is_moveable { assets.rounded_cube_mesh.clone() } else { assets.cube_mesh.clone() };
+                let mat = if is_moveable { assets.moveable_glass_mat.clone() } else { assets.fixed_glass_mat.clone() };
+                (mesh, mat)
+            }
             BlockKind::Player => {
                 let mat = if game.engine.is_lost() {
                     assets.player_burnt_mat.clone()
@@ -768,10 +943,13 @@ pub fn sync_bodies(
             BlockKind::Goal => {
                 let mat = if game.engine.is_won() {
                     assets.goal_won_mat.clone()
+                } else if is_moveable {
+                    assets.moveable_goal_mat.clone()
                 } else {
                     assets.goal_mat.clone()
                 };
-                (assets.pyramid_mesh.clone(), mat)
+                let mesh = if is_moveable { assets.rounded_pyramid_mesh.clone() } else { assets.pyramid_mesh.clone() };
+                (mesh, mat)
             }
             BlockKind::Wall => (assets.cube_mesh.clone(), assets.fixed_wall_mat.clone()),
             BlockKind::Pushable => {
@@ -780,13 +958,26 @@ pub fn sync_bodies(
                 } else {
                     assets.fixed_pushable_mat.clone()
                 };
-                (assets.cube_mesh.clone(), mat)
+                let mesh = if is_moveable {
+                    assets.rounded_cube_mesh.clone()
+                } else {
+                    assets.cube_mesh.clone()
+                };
+                (mesh, mat)
             }
             BlockKind::Mirror => {
-                let m = if body.orientation.is_reflection() {
-                    assets.mirror_mesh_chiral.clone()
+                let m = if is_moveable {
+                    if body.orientation.is_reflection() {
+                        assets.rounded_mirror_mesh_chiral.clone()
+                    } else {
+                        assets.rounded_mirror_mesh.clone()
+                    }
                 } else {
-                    assets.mirror_mesh.clone()
+                    if body.orientation.is_reflection() {
+                        assets.mirror_mesh_chiral.clone()
+                    } else {
+                        assets.mirror_mesh.clone()
+                    }
                 };
                 let mat = if is_moveable {
                     assets.moveable_mirror_mat.clone()
@@ -801,7 +992,12 @@ pub fn sync_bodies(
                 } else {
                     assets.fixed_laser_mat.clone()
                 };
-                (assets.cube_mesh.clone(), mat)
+                let mesh = if is_moveable {
+                    assets.rounded_cube_mesh.clone()
+                } else {
+                    assets.cube_mesh.clone()
+                };
+                (mesh, mat)
             }
         };
 
@@ -1133,4 +1329,35 @@ pub fn setup_grid_labels(mut commands: Commands) {
             .with_rotation(rotation)
             .with_scale(scale),
     ));
+}
+
+pub fn draw_combined_group_gizmos(
+    mut gizmos: Gizmos,
+    game: Res<GameState>,
+) {
+    use std::collections::HashMap;
+
+    let mut groups: HashMap<u32, Vec<bevy::math::Vec3>> = HashMap::new();
+    
+    for body in game.engine.world.bodies() {
+        if let Some(group_id) = body.combined_group {
+            let pos = sim_to_bevy_f32(body.anchor.as_vec3());
+            groups.entry(group_id).or_default().push(pos);
+        }
+    }
+    
+    for positions in groups.values() {
+        if positions.len() < 2 {
+            continue;
+        }
+        
+        let color = Color::srgb(0.0, 1.0, 0.0);
+        
+        // Draw lines connecting the members of the group
+        for i in 0..positions.len() {
+            for j in (i + 1)..positions.len() {
+                gizmos.line(positions[i], positions[j], color);
+            }
+        }
+    }
 }
