@@ -24,7 +24,7 @@ pub struct CameraController {
 impl Default for CameraController {
     fn default() -> Self {
         Self {
-            target: Vec3::new(3.5, 0.0, -2.5),
+            target: Vec3::new(4.5, 0.0, -4.5),
             distance: 18.0,
             pitch: 62.0_f32.to_radians(),
             yaw: 0.0,

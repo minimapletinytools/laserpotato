@@ -670,23 +670,25 @@ mod tests {
         assert!(!engine.is_won());
 
         // Manually place mirrors in winning relay positions:
-        // Move MM2 from (3, 6) to (5, 6)
-        let mm2_id = engine.world.body_at(IVec3::new(3, 6, 0)).unwrap().id;
-        engine.world.body_mut(mm2_id).unwrap().anchor = IVec3::new(5, 6, 0);
+        // Move MM2 from (4, 8) to (6, 8) (identity reflects +Y -> +X)
+        let mm2_id = engine.world.body_at(IVec3::new(4, 8, 0)).unwrap().id;
+        let mm2 = engine.world.body_mut(mm2_id).unwrap();
+        mm2.anchor = IVec3::new(6, 8, 0);
+        mm2.orientation = CubeRot::IDENTITY;
 
-        // Move MM1 from (2, 5) to (1, 4)
-        let mm1_id = engine.world.body_at(IVec3::new(2, 5, 0)).unwrap().id;
-        engine.world.body_mut(mm1_id).unwrap().anchor = IVec3::new(1, 4, 0);
+        // Move MM1 from (3, 7) to (2, 6)
+        let mm1_id = engine.world.body_at(IVec3::new(3, 7, 0)).unwrap().id;
+        engine.world.body_mut(mm1_id).unwrap().anchor = IVec3::new(2, 6, 0);
 
-        // Push LaserSource from (1, 0) to (1, 1)
-        let laser_id = engine.world.body_at(IVec3::new(1, 0, 0)).unwrap().id;
-        engine.world.body_mut(laser_id).unwrap().anchor = IVec3::new(1, 1, 0);
+        // Push LaserSource from (2, 2) to (2, 3)
+        let laser_id = engine.world.body_at(IVec3::new(2, 2, 0)).unwrap().id;
+        engine.world.body_mut(laser_id).unwrap().anchor = IVec3::new(2, 3, 0);
         engine.world.sync_grid();
 
         // Take a turn (Wait) to trigger recalculation
         engine.apply(PlayerAction::Wait);
 
-        // The 3-bounce laser path connects: (1,1) -> (1,4) -> (5,4) -> (5,6) -> (7,6) Goal!
+        // The 3-bounce laser path connects: (2,3) -> (2,6) -> (6,6) -> (6,8) -> (8,8) Goal!
         assert_eq!(engine.outcome, GameOutcome::Won);
         assert!(engine.is_won());
     }

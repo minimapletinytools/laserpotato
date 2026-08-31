@@ -1207,10 +1207,10 @@ pub fn draw_grid_gizmos(
         return;
     }
 
-    let min_x = -1.5_f32;
-    let max_x = 8.5_f32;
-    let min_sim_y = -1.5_f32;
-    let max_sim_y = 7.5_f32;
+    let min_x = -0.5_f32;
+    let max_x = 9.5_f32;
+    let min_sim_y = -0.5_f32;
+    let max_sim_y = 9.5_f32;
 
     let floor_y0 = -0.49_f32;
     let base_color = Color::srgba(0.3, 0.35, 0.45, 0.35);

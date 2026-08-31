@@ -226,7 +226,7 @@ fn setup_game(mut commands: Commands) {
             Camera3d::default(),
             editor::camera::MainCamera,
             editor::camera::CameraController::default(),
-            Transform::from_xyz(3.5, 17.5, 5.5).looking_at(Vec3::new(3.5, 0.0, -3.0), Vec3::Y),
+            Transform::from_xyz(4.5, 17.5, 5.0).looking_at(Vec3::new(4.5, 0.0, -4.5), Vec3::Y),
         ))
         .with_children(|cam| {
             cam.spawn((
