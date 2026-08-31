@@ -276,15 +276,15 @@ fn setup_game(mut commands: Commands) {
             ));
         });
 
-    // --- Coordinate Gizmo Legend (bottom left) ---------------------------
+    // --- Coordinate Gizmo Legend (bottom left of viewport) --------------
     if render::SHOW_COORDINATE_LEGEND {
         commands
             .spawn((
                 Node {
                     position_type: PositionType::Absolute,
-                    left: Val::Px(16.0),
+                    left: Val::Px(260.0),
                     bottom: Val::Px(36.0),
-                    padding: UiRect::all(Val::Px(10.0)),
+                    padding: UiRect::all(Val::Px(8.0)),
                     ..default()
                 },
                 BackgroundColor(Color::srgba(0.05, 0.05, 0.08, 0.85)),

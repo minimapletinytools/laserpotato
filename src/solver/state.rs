@@ -6,6 +6,7 @@ use std::hash::{Hash, Hasher};
 
 use glam::IVec3;
 
+use crate::block_types::BlockKind;
 use crate::sim::{Body, CubeRot, World};
 
 /// Compact representation of a single dynamic body's state.

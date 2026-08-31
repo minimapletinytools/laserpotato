@@ -45,6 +45,8 @@ pub enum EditorAction {
     Save,
     SaveAs,
     ToggleLevelsMenu,
+    ToggleFloorplanModal,
+    ToggleFramePreview,
     RotateViewCcw,
     RotateViewCw,
     AttemptSolve,
@@ -73,10 +75,26 @@ pub struct EditorState {
     pub z_mode: ZPlacementMode,
     /// Active Z layer for FixedLayer mode (default 0).
     pub current_z: i32,
-    /// Currently selected body on grid for Inspector.
-    pub selected_body_id: Option<BodyId>,
-    /// Currently dragging body ID on grid.
+    /// Currently selected bodies on grid for Inspector.
+    pub selected_body_ids: Vec<BodyId>,
+    /// Currently dragging body ID on grid (for StackOnTop mode).
     pub dragging_body_id: Option<BodyId>,
+    /// Screen start coordinate for drag box selection in FixedLayer mode.
+    pub box_select_start: Option<Vec2>,
+    /// Whether box selection is currently active.
+    pub box_select_active: bool,
+    /// Set of locked Z layers (blocks on these layers are not selectable/editable).
+    pub locked_z_layers: std::collections::HashSet<i32>,
+    /// Whether the floorplan dialog is currently open.
+    pub floorplan_open: bool,
+    /// Level width for floorplan fill.
+    pub floorplan_width: i32,
+    /// Level height for floorplan fill.
+    pub floorplan_height: i32,
+    /// Target Z layer for floorplan fill.
+    pub floorplan_z: i32,
+    /// Whether Frame 1 laser preview is enabled in editor.
+    pub show_frame1_preview: bool,
     /// Hovered grid coordinate (X, Y, Z) in simulation space.
     pub hovered_cell: Option<IVec3>,
     /// Current level file path.
@@ -102,8 +120,16 @@ impl Default for EditorState {
             is_fixed: false,
             z_mode: ZPlacementMode::StackOnTop,
             current_z: 0,
-            selected_body_id: None,
+            selected_body_ids: Vec::new(),
             dragging_body_id: None,
+            box_select_start: None,
+            box_select_active: false,
+            locked_z_layers: std::collections::HashSet::new(),
+            floorplan_open: false,
+            floorplan_width: 10,
+            floorplan_height: 10,
+            floorplan_z: -1,
+            show_frame1_preview: true,
             hovered_cell: None,
             current_level_path: String::from("levels/default_puzzle.json"),
             solver_rx: None,
@@ -117,6 +143,42 @@ impl Default for EditorState {
 }
 
 impl EditorState {
+    /// Return the primary selected body ID (first selected block).
+    #[allow(dead_code)]
+    pub fn primary_selection(&self) -> Option<BodyId> {
+        self.selected_body_ids.first().copied()
+    }
+
+    /// Check if a specific body is currently selected.
+    pub fn is_selected(&self, id: BodyId) -> bool {
+        self.selected_body_ids.contains(&id)
+    }
+
+    /// Select a single body and clear previous selections.
+    pub fn select_single(&mut self, id: BodyId) {
+        self.selected_body_ids.clear();
+        self.selected_body_ids.push(id);
+    }
+
+    /// Toggle a body in or out of the current selection set.
+    pub fn toggle_selection(&mut self, id: BodyId) {
+        if let Some(pos) = self.selected_body_ids.iter().position(|&x| x == id) {
+            self.selected_body_ids.remove(pos);
+        } else {
+            self.selected_body_ids.push(id);
+        }
+    }
+
+    /// Clear all selections.
+    pub fn clear_selection(&mut self) {
+        self.selected_body_ids.clear();
+    }
+
+    /// Check if a Z layer is locked.
+    pub fn is_layer_locked(&self, z: i32) -> bool {
+        self.locked_z_layers.contains(&z)
+    }
+
     /// Allowed (moveable, fixed) property configuration for a given block kind.
     pub fn allowed_fixed_state(&self, kind: BlockKind) -> (bool, bool) {
         match kind {
@@ -159,14 +221,21 @@ impl Plugin for EditorPlugin {
                 (
                     camera::camera_controller_system,
                     ui::update_editor_ui_system,
+                    ui::update_editor_status_and_modal_ui_system,
                     update_palette_3d_preview,
-                    editor_grid_interaction_system.run_if(in_state(AppMode::Editor)),
-                    editor_button_clicks_system.run_if(in_state(AppMode::Editor)),
                     background_solver_poll_system,
                     draw_editor_selection_gizmos,
                     editor_keyboard_shortcuts_system,
                     toast_decay_system,
                 ),
+            )
+            .add_systems(
+                Update,
+                (
+                    editor_grid_interaction_system,
+                    editor_button_clicks_system,
+                )
+                    .run_if(in_state(AppMode::Editor)),
             );
     }
 }
@@ -426,6 +495,31 @@ fn can_move_body_to(world: &World, body_id: BodyId, target_anchor: IVec3) -> boo
     true
 }
 
+/// Fill a rectangular floor of `width` x `height` blocks at layer `z`.
+pub fn fill_floorplan(world: &mut World, width: i32, height: i32, z: i32) {
+    use crate::sim::{TagKind, TagValue};
+    // Remove existing Floor blocks on this layer
+    let to_remove: Vec<BodyId> = world
+        .bodies()
+        .iter()
+        .filter(|b| b.kind == BlockKind::Floor && b.anchor.z == z)
+        .map(|b| b.id)
+        .collect();
+    for id in to_remove {
+        world.despawn(id);
+    }
+    // Spawn floor tiles across 0..width, 0..height
+    for x in 0..width {
+        for y in 0..height {
+            let id = world.spawn(BlockKind::Floor, IVec3::new(x, y, z), vec![IVec3::ZERO]);
+            if let Some(b) = world.body_mut(id) {
+                b.tags.set(TagKind::Fixed, TagValue::Unit);
+            }
+        }
+    }
+    world.sync_grid();
+}
+
 fn editor_grid_interaction_system(
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform), With<camera::MainCamera>>,
@@ -434,48 +528,77 @@ fn editor_grid_interaction_system(
     mut editor: ResMut<EditorState>,
     mut game: ResMut<GameState>,
 ) {
-    // Keyboard shortcuts for selected block in editor
-    if let Some(id) = editor.selected_body_id {
+    let shift_held = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
+
+    // 1. Multi-block transform shortcuts for all selected blocks
+    if !editor.selected_body_ids.is_empty() {
+        let ids = editor.selected_body_ids.clone();
+        let mut modified = false;
+
         if keyboard.just_pressed(KeyCode::KeyR) {
-            if let Some(b) = game.engine.world.body_mut(id) {
-                b.orientation = b.orientation.rot_world_z_cw();
-                game.engine.world.sync_grid();
-                editor.cached_solution = None;
-                editor.toast("Rotated block CW around World Z axis (Key: R).");
+            for &id in &ids {
+                if let Some(b) = game.engine.world.body_mut(id) {
+                    b.orientation = b.orientation.rot_world_z_cw();
+                    modified = true;
+                }
+            }
+            if modified {
+                editor.toast("Rotated selected block(s) CW around Z axis [R].");
             }
         } else if keyboard.just_pressed(KeyCode::KeyT) {
-            if let Some(b) = game.engine.world.body_mut(id) {
-                b.orientation = b.orientation.rot_world_x_pos();
-                game.engine.world.sync_grid();
-                editor.cached_solution = None;
-                editor.toast("Pitched block +90° around World X axis (Key: T).");
+            for &id in &ids {
+                if let Some(b) = game.engine.world.body_mut(id) {
+                    b.orientation = b.orientation.rot_world_x_pos();
+                    modified = true;
+                }
+            }
+            if modified {
+                editor.toast("Pitched selected block(s) +90° around X axis [T].");
             }
         } else if keyboard.just_pressed(KeyCode::KeyG) {
-            if let Some(b) = game.engine.world.body_mut(id) {
-                b.orientation = b.orientation.rot_world_y_pos();
-                game.engine.world.sync_grid();
-                editor.cached_solution = None;
-                editor.toast("Rolled block +90° around World Y axis (Key: G).");
+            for &id in &ids {
+                if let Some(b) = game.engine.world.body_mut(id) {
+                    b.orientation = b.orientation.rot_world_y_pos();
+                    modified = true;
+                }
+            }
+            if modified {
+                editor.toast("Rolled selected block(s) +90° around Y axis [G].");
             }
         } else if keyboard.just_pressed(KeyCode::KeyX) {
-            if let Some(b) = game.engine.world.body_mut(id) {
-                b.orientation = b.orientation.reflect_x();
-                game.engine.world.sync_grid();
-                editor.cached_solution = None;
-                editor.toast("Flipped block across X axis (Key: X).");
+            for &id in &ids {
+                if let Some(b) = game.engine.world.body_mut(id) {
+                    b.orientation = b.orientation.reflect_x();
+                    modified = true;
+                }
+            }
+            if modified {
+                editor.toast("Flipped selected block(s) across X axis [X].");
             }
         } else if keyboard.just_pressed(KeyCode::KeyY) {
-            if let Some(b) = game.engine.world.body_mut(id) {
-                b.orientation = b.orientation.reflect_y();
-                game.engine.world.sync_grid();
-                editor.cached_solution = None;
-                editor.toast("Flipped block across Y axis (Key: Y).");
+            for &id in &ids {
+                if let Some(b) = game.engine.world.body_mut(id) {
+                    b.orientation = b.orientation.reflect_y();
+                    modified = true;
+                }
+            }
+            if modified {
+                editor.toast("Flipped selected block(s) across Y axis [Y].");
             }
         } else if keyboard.just_pressed(KeyCode::Delete) || keyboard.just_pressed(KeyCode::Backspace) {
-            game.engine.world.despawn(id);
-            editor.selected_body_id = None;
+            for &id in &ids {
+                game.engine.world.despawn(id);
+            }
+            editor.clear_selection();
+            modified = true;
+            editor.toast("Deleted selected block(s).");
+        }
+
+        if modified {
+            game.engine.world.sync_grid();
+            let new_world = game.engine.world.clone();
+            game.engine.update_authoring_world(new_world);
             editor.cached_solution = None;
-            editor.toast("Deleted selected block (Key: Del).");
         }
     }
 
@@ -485,12 +608,12 @@ fn editor_grid_interaction_system(
         return;
     };
 
-    // Ignore clicks if cursor is over sidebars or top bar
+    // Ignore clicks if cursor is over sidebars, top bar, or floorplan modal
     if cursor_pos.x < 260.0 && cursor_pos.y > 55.0 {
         editor.hovered_cell = None;
         return;
     }
-    if cursor_pos.x > (window.width() - 260.0) && cursor_pos.y > 55.0 && editor.selected_body_id.is_some() {
+    if cursor_pos.x > (window.width() - 260.0) && cursor_pos.y > 55.0 && !editor.selected_body_ids.is_empty() {
         editor.hovered_cell = None;
         return;
     }
@@ -498,11 +621,15 @@ fn editor_grid_interaction_system(
         editor.hovered_cell = None;
         return;
     }
+    if editor.floorplan_open && cursor_pos.x >= 260.0 && cursor_pos.x <= 550.0 && cursor_pos.y >= 55.0 && cursor_pos.y <= 360.0 {
+        editor.hovered_cell = None;
+        return;
+    }
 
     let Ok((camera, camera_transform)) = camera_query.single() else { return };
 
     let ignore_id = editor.dragging_body_id;
-    let (target_cell, clicked_body_id) = match editor.z_mode {
+    let (target_cell, raw_hit_body_id) = match editor.z_mode {
         ZPlacementMode::StackOnTop => {
             let Some((cell, body_id)) = raycast_stack_on_top(camera, camera_transform, cursor_pos, &game.engine.world, ignore_id) else {
                 editor.hovered_cell = None;
@@ -520,41 +647,107 @@ fn editor_grid_interaction_system(
         }
     };
 
+    // Filter locked Z layers from selection
+    let clicked_body_id = raw_hit_body_id.filter(|&id| {
+        if let Some(b) = game.engine.world.body(id) {
+            !editor.is_layer_locked(b.anchor.z)
+        } else {
+            false
+        }
+    });
+
     editor.hovered_cell = Some(target_cell);
     let cell_pos = target_cell;
 
-    // Left Click: Place or Select & Start Dragging
+    // 2. Left Click: Selection / Placement / Dragging
     if mouse_button.just_pressed(MouseButton::Left) {
-        if editor.selected_kind.is_none() {
-            // Select-Only mode: clicking always selects the clicked body, or deselects if clicking empty space
-            let hit_id = if editor.z_mode == ZPlacementMode::FixedLayer {
-                game.engine.world.body_at(cell_pos).map(|b| b.id)
-            } else {
-                clicked_body_id
-            };
+        if editor.z_mode == ZPlacementMode::FixedLayer {
+            // Fixed Layer Mode: prioritize box-select start
+            editor.box_select_start = Some(cursor_pos);
+            editor.box_select_active = false;
 
-            if let Some(body_id) = hit_id {
-                if let Some(body) = game.engine.world.body(body_id) {
-                    let kind = body.kind;
-                    let anchor = body.anchor;
-                    editor.selected_body_id = Some(body_id);
-                    editor.dragging_body_id = Some(body_id);
-                    editor.toast(format!("Selected {:?} at ({}, {}, {})", kind, anchor.x, anchor.y, anchor.z));
+            if editor.selected_kind.is_none() {
+                if let Some(body_id) = clicked_body_id {
+                    if shift_held {
+                        editor.toggle_selection(body_id);
+                        let total = editor.selected_body_ids.len();
+                        editor.toast(format!("Toggled selection (Total: {}).", total));
+                    } else {
+                        editor.select_single(body_id);
+                        editor.toast(format!("Selected block (ID {}).", body_id.0));
+                    }
+                } else if !shift_held {
+                    editor.clear_selection();
                 }
             } else {
-                editor.selected_body_id = None;
-                editor.dragging_body_id = None;
-                editor.toast("Deselected block.");
+                // Placing block in FixedLayer mode
+                if let Some(body_id) = clicked_body_id {
+                    if shift_held {
+                        editor.toggle_selection(body_id);
+                    } else {
+                        editor.select_single(body_id);
+                    }
+                } else if !editor.is_layer_locked(cell_pos.z) {
+                    // Place block at layer Z
+                    let kind = editor.selected_kind.unwrap();
+                    let (can_moveable, can_fixed) = editor.allowed_fixed_state(kind);
+                    let is_fixed = if !can_moveable { true } else if !can_fixed { false } else { editor.is_fixed };
+
+                    if kind == BlockKind::Player {
+                        if let Some(player_id) = game.engine.world.player_id() {
+                            if let Some(p) = game.engine.world.body_mut(player_id) {
+                                p.anchor = cell_pos;
+                                game.engine.world.sync_grid();
+                                let new_world = game.engine.world.clone();
+                                game.engine.update_authoring_world(new_world);
+                                editor.select_single(player_id);
+                                editor.toast(format!("Relocated player character to ({}, {}, {}).", cell_pos.x, cell_pos.y, cell_pos.z));
+                                editor.cached_solution = None;
+                                return;
+                            }
+                        }
+                    }
+
+                    let new_id = game.engine.world.spawn(kind, cell_pos, vec![IVec3::ZERO]);
+                    if let Some(b) = game.engine.world.body_mut(new_id) {
+                        if is_fixed {
+                            b.tags.set(TagKind::Fixed, TagValue::Unit);
+                        }
+                    }
+                    game.engine.world.sync_grid();
+                    let new_world = game.engine.world.clone();
+                    game.engine.update_authoring_world(new_world);
+                    editor.select_single(new_id);
+                    editor.cached_solution = None;
+                    editor.toast(format!("Placed {:?} at Layer Z={} ({}, {})", kind, cell_pos.z, cell_pos.x, cell_pos.y));
+                }
             }
-        } else if editor.z_mode == ZPlacementMode::FixedLayer {
-            if let Some(body) = game.engine.world.body_at(cell_pos) {
-                let body_id = body.id;
-                let kind = body.kind;
-                editor.selected_body_id = Some(body_id);
-                editor.dragging_body_id = Some(body_id);
-                editor.toast(format!("Selected {:?} at ({}, {}, {})", kind, cell_pos.x, cell_pos.y, cell_pos.z));
+        } else {
+            // StackOnTop Mode
+            if editor.selected_kind.is_none() {
+                if let Some(body_id) = clicked_body_id {
+                    if shift_held {
+                        editor.toggle_selection(body_id);
+                        let total = editor.selected_body_ids.len();
+                        editor.toast(format!("Toggled selection (Total: {}).", total));
+                    } else {
+                        editor.select_single(body_id);
+                        editor.dragging_body_id = Some(body_id);
+                        editor.toast(format!("Selected block (ID {}).", body_id.0));
+                    }
+                } else if !shift_held {
+                    editor.clear_selection();
+                    editor.dragging_body_id = None;
+                }
+            } else if let Some(body_id) = clicked_body_id {
+                if shift_held {
+                    editor.toggle_selection(body_id);
+                } else {
+                    editor.select_single(body_id);
+                    editor.dragging_body_id = Some(body_id);
+                }
             } else {
-                // Place block at layer Z
+                // Stack / Place block
                 let kind = editor.selected_kind.unwrap();
                 let (can_moveable, can_fixed) = editor.allowed_fixed_state(kind);
                 let is_fixed = if !can_moveable { true } else if !can_fixed { false } else { editor.is_fixed };
@@ -564,7 +757,9 @@ fn editor_grid_interaction_system(
                         if let Some(p) = game.engine.world.body_mut(player_id) {
                             p.anchor = cell_pos;
                             game.engine.world.sync_grid();
-                            editor.selected_body_id = Some(player_id);
+                            let new_world = game.engine.world.clone();
+                            game.engine.update_authoring_world(new_world);
+                            editor.select_single(player_id);
                             editor.dragging_body_id = None;
                             editor.toast(format!("Relocated player character to ({}, {}, {}).", cell_pos.x, cell_pos.y, cell_pos.z));
                             editor.cached_solution = None;
@@ -580,74 +775,85 @@ fn editor_grid_interaction_system(
                     }
                 }
                 game.engine.world.sync_grid();
-                editor.selected_body_id = Some(new_id);
+                let new_world = game.engine.world.clone();
+                game.engine.update_authoring_world(new_world);
+                editor.select_single(new_id);
                 editor.dragging_body_id = None;
                 editor.cached_solution = None;
-                editor.toast(format!("Placed {:?} at Layer Z={} ({}, {})", kind, cell_pos.z, cell_pos.x, cell_pos.y));
-            }
-        } else {
-            // StackOnTop mode:
-            let kind = editor.selected_kind.unwrap();
-            let (can_moveable, can_fixed) = editor.allowed_fixed_state(kind);
-            let is_fixed = if !can_moveable { true } else if !can_fixed { false } else { editor.is_fixed };
-
-            if kind == BlockKind::Player {
-                if let Some(player_id) = game.engine.world.player_id() {
-                    if let Some(p) = game.engine.world.body_mut(player_id) {
-                        p.anchor = cell_pos;
-                        game.engine.world.sync_grid();
-                        editor.selected_body_id = Some(player_id);
-                        editor.dragging_body_id = None;
-                        editor.toast(format!("Relocated player character to ({}, {}, {}).", cell_pos.x, cell_pos.y, cell_pos.z));
-                        editor.cached_solution = None;
-                        return;
-                    }
+                if cell_pos.z > 0 {
+                    editor.toast(format!("Stacked {:?} on top at ({}, {}, {})", kind, cell_pos.x, cell_pos.y, cell_pos.z));
+                } else {
+                    editor.toast(format!("Placed {:?} at ({}, {}, {})", kind, cell_pos.x, cell_pos.y, cell_pos.z));
                 }
-            }
-
-            let new_id = game.engine.world.spawn(kind, cell_pos, vec![IVec3::ZERO]);
-            if let Some(b) = game.engine.world.body_mut(new_id) {
-                if is_fixed {
-                    b.tags.set(TagKind::Fixed, TagValue::Unit);
-                }
-            }
-            game.engine.world.sync_grid();
-            editor.selected_body_id = Some(new_id);
-            editor.dragging_body_id = None;
-            editor.cached_solution = None;
-            if cell_pos.z > 0 {
-                editor.toast(format!("Stacked {:?} on top at ({}, {}, {})", kind, cell_pos.x, cell_pos.y, cell_pos.z));
-            } else {
-                editor.toast(format!("Placed {:?} at ({}, {}, {})", kind, cell_pos.x, cell_pos.y, cell_pos.z));
             }
         }
     } else if mouse_button.pressed(MouseButton::Left) {
-        // Continuous Dragging of selected / placed block across grid
-        if let Some(drag_id) = editor.dragging_body_id {
+        if editor.z_mode == ZPlacementMode::FixedLayer {
+            if let Some(start) = editor.box_select_start {
+                if cursor_pos.distance(start) > 6.0 {
+                    editor.box_select_active = true;
+                }
+            }
+        } else if let Some(drag_id) = editor.dragging_body_id {
+            // StackOnTop drag single block
             if let Some(body) = game.engine.world.body(drag_id) {
-                if body.anchor != cell_pos {
-                    if can_move_body_to(&game.engine.world, drag_id, cell_pos) {
-                        if let Some(b) = game.engine.world.body_mut(drag_id) {
-                            b.anchor = cell_pos;
-                        }
-                        game.engine.world.sync_grid();
-                        editor.cached_solution = None;
+                if body.anchor != cell_pos && can_move_body_to(&game.engine.world, drag_id, cell_pos) {
+                    if let Some(b) = game.engine.world.body_mut(drag_id) {
+                        b.anchor = cell_pos;
                     }
+                    game.engine.world.sync_grid();
+                    let new_world = game.engine.world.clone();
+                    game.engine.update_authoring_world(new_world);
+                    editor.cached_solution = None;
                 }
             }
         }
     }
 
-    // Release Left Click: End Dragging
+    // 3. Release Left Click
     if mouse_button.just_released(MouseButton::Left) {
-        if let Some(drag_id) = editor.dragging_body_id.take() {
+        if editor.z_mode == ZPlacementMode::FixedLayer {
+            if editor.box_select_active {
+                if let (Some(start), Ok((camera, camera_transform))) = (editor.box_select_start.take(), camera_query.single()) {
+                    if let Some(start_cell) = raycast_plane_at_z(camera, camera_transform, start, editor.current_z) {
+                        let min_x = start_cell.x.min(cell_pos.x);
+                        let max_x = start_cell.x.max(cell_pos.x);
+                        let min_y = start_cell.y.min(cell_pos.y);
+                        let max_y = start_cell.y.max(cell_pos.y);
+
+                        let mut boxed_ids = Vec::new();
+                        for body in game.engine.world.bodies() {
+                            if body.anchor.z == editor.current_z && !editor.is_layer_locked(body.anchor.z) {
+                                if body.anchor.x >= min_x && body.anchor.x <= max_x && body.anchor.y >= min_y && body.anchor.y <= max_y {
+                                    boxed_ids.push(body.id);
+                                }
+                            }
+                        }
+
+                        if shift_held {
+                            for id in boxed_ids {
+                                if !editor.is_selected(id) {
+                                    editor.selected_body_ids.push(id);
+                                }
+                            }
+                        } else {
+                            editor.selected_body_ids = boxed_ids;
+                        }
+                        let total = editor.selected_body_ids.len();
+                        editor.toast(format!("Box selected {} block(s).", total));
+                    }
+                }
+            }
+            editor.box_select_start = None;
+            editor.box_select_active = false;
+        } else if let Some(drag_id) = editor.dragging_body_id.take() {
             if let Some(body) = game.engine.world.body(drag_id) {
                 editor.toast(format!("Moved {:?} to ({}, {}, {})", body.kind, body.anchor.x, body.anchor.y, body.anchor.z));
             }
         }
     }
 
-    // Right Click: Delete Block
+    // 4. Right Click: Delete Block
     if mouse_button.just_pressed(MouseButton::Right) {
         let to_delete = if editor.z_mode == ZPlacementMode::FixedLayer {
             game.engine.world.body_at(cell_pos).map(|b| b.id)
@@ -656,15 +862,20 @@ fn editor_grid_interaction_system(
         };
 
         if let Some(id) = to_delete {
-            game.engine.world.despawn(id);
-            if editor.selected_body_id == Some(id) {
-                editor.selected_body_id = None;
+            if let Some(body) = game.engine.world.body(id) {
+                if !editor.is_layer_locked(body.anchor.z) {
+                    game.engine.world.despawn(id);
+                    editor.selected_body_ids.retain(|&x| x != id);
+                    if editor.dragging_body_id == Some(id) {
+                        editor.dragging_body_id = None;
+                    }
+                    game.engine.world.sync_grid();
+                    let new_world = game.engine.world.clone();
+                    game.engine.update_authoring_world(new_world);
+                    editor.cached_solution = None;
+                    editor.toast(format!("Deleted block at ({}, {}, {})", cell_pos.x, cell_pos.y, cell_pos.z));
+                }
             }
-            if editor.dragging_body_id == Some(id) {
-                editor.dragging_body_id = None;
-            }
-            editor.cached_solution = None;
-            editor.toast(format!("Deleted block at ({}, {}, {})", cell_pos.x, cell_pos.y, cell_pos.z));
         }
     }
 }
@@ -692,12 +903,27 @@ fn editor_button_clicks_system(
                 Option<&ui::ReflectXButton>,
                 Option<&ui::ReflectYButton>,
                 Option<&ui::ToggleFixedButton>,
+                Option<&ui::CombineButton>,
+                Option<&ui::UncombineButton>,
                 Option<&ui::DeleteBlockButton>,
             ),
             (
                 Option<&ui::ZModeToggleButton>,
                 Option<&ui::ZLayerIncButton>,
                 Option<&ui::ZLayerDecButton>,
+            ),
+            (
+                Option<&ui::FloorplanWidthDecBtn>,
+                Option<&ui::FloorplanWidthIncBtn>,
+                Option<&ui::FloorplanHeightDecBtn>,
+                Option<&ui::FloorplanHeightIncBtn>,
+                Option<&ui::FloorplanZDecBtn>,
+                Option<&ui::FloorplanZIncBtn>,
+            ),
+            (
+                Option<&ui::FloorplanFillBtn>,
+                Option<&ui::FloorplanLockToggleBtn>,
+                Option<&ui::FloorplanCloseBtn>,
             ),
         ),
         (Changed<Interaction>, With<Button>),
@@ -714,15 +940,17 @@ fn editor_button_clicks_system(
         prop_btn,
         action_btn,
         (rot_cw, rot_ccw, rot_x_pos, rot_x_neg, rot_y_pos, rot_y_neg),
-        (ref_x, ref_y, toggle_fixed, del_btn),
+        (ref_x, ref_y, toggle_fixed, combine_btn, uncombine_btn, del_btn),
         (z_mode_btn, z_inc_btn, z_dec_btn),
+        (fp_w_dec, fp_w_inc, fp_h_dec, fp_h_inc, fp_z_dec, fp_z_inc),
+        (fp_fill, fp_lock_toggle, fp_close),
     ) in &mut interaction_query
     {
         if *interaction != Interaction::Pressed {
             continue;
         }
 
-        // 1. Palette block selection (clicking active tool toggles off to Select-Only mode)
+        // 1. Palette block selection
         if let Some(btn) = palette_btn {
             if editor.selected_kind == Some(btn.0) {
                 editor.selected_kind = None;
@@ -778,7 +1006,50 @@ fn editor_button_clicks_system(
             editor.toast(format!("Z Layer: {}", next_z));
         }
 
-        // 5. Top Action buttons
+        // 5. Floorplan modal controls
+        if fp_w_dec.is_some() {
+            editor.floorplan_width = (editor.floorplan_width - 1).max(1);
+        }
+        if fp_w_inc.is_some() {
+            editor.floorplan_width = (editor.floorplan_width + 1).min(50);
+        }
+        if fp_h_dec.is_some() {
+            editor.floorplan_height = (editor.floorplan_height - 1).max(1);
+        }
+        if fp_h_inc.is_some() {
+            editor.floorplan_height = (editor.floorplan_height + 1).min(50);
+        }
+        if fp_z_dec.is_some() {
+            editor.floorplan_z = (editor.floorplan_z - 1).max(-10);
+        }
+        if fp_z_inc.is_some() {
+            editor.floorplan_z = (editor.floorplan_z + 1).min(20);
+        }
+        if fp_fill.is_some() {
+            let w = editor.floorplan_width;
+            let h = editor.floorplan_height;
+            let z = editor.floorplan_z;
+            fill_floorplan(&mut game.engine.world, w, h, z);
+            let new_world = game.engine.world.clone();
+            game.engine.update_authoring_world(new_world);
+            editor.cached_solution = None;
+            editor.toast(format!("Filled {}x{} Floor blocks at Layer Z={}.", w, h, z));
+        }
+        if fp_lock_toggle.is_some() {
+            let z = editor.floorplan_z;
+            if editor.locked_z_layers.contains(&z) {
+                editor.locked_z_layers.remove(&z);
+                editor.toast(format!("Unlocked Layer Z={}.", z));
+            } else {
+                editor.locked_z_layers.insert(z);
+                editor.toast(format!("Locked Layer Z={} (blocks cannot be selected/edited).", z));
+            }
+        }
+        if fp_close.is_some() {
+            editor.floorplan_open = false;
+        }
+
+        // 6. Top Action buttons
         if let Some(btn) = action_btn {
             match btn.0 {
                 EditorAction::NewLevel => {
@@ -800,7 +1071,7 @@ fn editor_button_clicks_system(
                     }
                     world.sync_grid();
                     game.engine = TurnEngine::new(world);
-                    editor.selected_body_id = None;
+                    editor.clear_selection();
                     editor.cached_solution = None;
                     editor.solver_status = "Idle".into();
                     editor.toast("Created new blank puzzle room.");
@@ -839,12 +1110,21 @@ fn editor_button_clicks_system(
                         if let Ok(lvl) = level::load_level_from_file(target_path) {
                             game.engine = TurnEngine::new(lvl.to_world());
                             editor.current_level_path = target_path.clone();
-                            editor.selected_body_id = None;
+                            editor.clear_selection();
                             editor.cached_solution = None;
                             editor.solver_status = "Idle".into();
                             editor.toast(format!("Loaded: {}", target_path));
                         }
                     }
+                }
+                EditorAction::ToggleFloorplanModal => {
+                    editor.floorplan_open = !editor.floorplan_open;
+                }
+                EditorAction::ToggleFramePreview => {
+                    let next_show = !editor.show_frame1_preview;
+                    editor.show_frame1_preview = next_show;
+                    game.engine.refresh_preview();
+                    editor.toast(format!("Frame 1 preview: {}", if next_show { "ON" } else { "OFF" }));
                 }
                 EditorAction::RotateViewCcw => {
                     for mut controller in &mut camera_query {
@@ -859,6 +1139,11 @@ fn editor_button_clicks_system(
                     editor.toast("Rotated level view 90° CW (Key: E).");
                 }
                 EditorAction::AttemptSolve => {
+                    if !game.engine.is_valid() {
+                        editor.solver_status = "Invalid Level".into();
+                        editor.toast("Cannot solve: Level has spontaneous movement at Frame 1.");
+                        return;
+                    }
                     let current_hash = compute_level_hash(&game.engine.world);
                     let world_clone = game.engine.world.clone();
                     let (tx, rx) = mpsc::channel();
@@ -877,10 +1162,21 @@ fn editor_button_clicks_system(
                     });
                 }
                 EditorAction::TestPlay => {
-                    editor.backup_world = Some(game.engine.world.clone());
-                    next_mode.set(AppMode::Playtest);
+                    match game.engine.start_playtest() {
+                        Ok(()) => {
+                            editor.backup_world = Some(game.engine.frame_zero_star.clone());
+                            next_mode.set(AppMode::Playtest);
+                        }
+                        Err(err) => {
+                            editor.toast(format!("Cannot playtest: {}", err));
+                        }
+                    }
                 }
                 EditorAction::TestWithSolution => {
+                    if !game.engine.is_valid() {
+                        editor.toast("Cannot play solution: level has spontaneous movement.");
+                        return;
+                    }
                     let current_hash = compute_level_hash(&game.engine.world);
                     let cached_actions = editor
                         .cached_solution
@@ -889,138 +1185,167 @@ fn editor_button_clicks_system(
                         .map(|(_, acts)| acts.clone());
 
                     if let Some(actions) = cached_actions {
-                        editor.backup_world = Some(game.engine.world.clone());
-                        playback.is_playback = true;
-                        playback.actions = actions;
-                        playback.current_index = 0;
-                        playback.auto_playing = true;
-                        next_mode.set(AppMode::Playback);
-                    } else {
-                        editor.toast("No valid solution cached for current level. Click 'Attempt to Solve'.");
-                    }
-                }
-            }
-        }
-
-        // 4. Inspector rotation buttons (Pitch, Roll, Yaw in World Space)
-        if rot_x_pos.is_some() {
-            if let Some(id) = editor.selected_body_id {
-                if let Some(body) = game.engine.world.body_mut(id) {
-                    body.orientation = body.orientation.rot_world_x_pos();
-                    game.engine.world.sync_grid();
-                    editor.cached_solution = None;
-                    editor.toast("Pitched block +90° around World X axis.");
-                }
-            }
-        }
-
-        if rot_x_neg.is_some() {
-            if let Some(id) = editor.selected_body_id {
-                if let Some(body) = game.engine.world.body_mut(id) {
-                    body.orientation = body.orientation.rot_world_x_neg();
-                    game.engine.world.sync_grid();
-                    editor.cached_solution = None;
-                    editor.toast("Pitched block -90° around World X axis.");
-                }
-            }
-        }
-
-        if rot_y_pos.is_some() {
-            if let Some(id) = editor.selected_body_id {
-                if let Some(body) = game.engine.world.body_mut(id) {
-                    body.orientation = body.orientation.rot_world_y_pos();
-                    game.engine.world.sync_grid();
-                    editor.cached_solution = None;
-                    editor.toast("Rolled block +90° around World Y axis.");
-                }
-            }
-        }
-
-        if rot_y_neg.is_some() {
-            if let Some(id) = editor.selected_body_id {
-                if let Some(body) = game.engine.world.body_mut(id) {
-                    body.orientation = body.orientation.rot_world_y_neg();
-                    game.engine.world.sync_grid();
-                    editor.cached_solution = None;
-                    editor.toast("Rolled block -90° around World Y axis.");
-                }
-            }
-        }
-
-        if rot_cw.is_some() {
-            if let Some(id) = editor.selected_body_id {
-                if let Some(body) = game.engine.world.body_mut(id) {
-                    body.orientation = body.orientation.rot_world_z_cw();
-                    game.engine.world.sync_grid();
-                    editor.cached_solution = None;
-                    editor.toast("Rotated block 90° Clockwise around World Z axis.");
-                }
-            }
-        }
-
-        if rot_ccw.is_some() {
-            if let Some(id) = editor.selected_body_id {
-                if let Some(body) = game.engine.world.body_mut(id) {
-                    body.orientation = body.orientation.rot_world_z_ccw();
-                    game.engine.world.sync_grid();
-                    editor.cached_solution = None;
-                    editor.toast("Rotated block 90° Counter-Clockwise around World Z axis.");
-                }
-            }
-        }
-
-        // 5. Inspector reflection buttons (Flip X, Flip Y)
-        if ref_x.is_some() {
-            if let Some(id) = editor.selected_body_id {
-                if let Some(body) = game.engine.world.body_mut(id) {
-                    body.orientation = body.orientation.reflect_x();
-                    game.engine.world.sync_grid();
-                    editor.cached_solution = None;
-                    editor.toast("Reflected block across X axis (Flip X).");
-                }
-            }
-        }
-
-        if ref_y.is_some() {
-            if let Some(id) = editor.selected_body_id {
-                if let Some(body) = game.engine.world.body_mut(id) {
-                    body.orientation = body.orientation.reflect_y();
-                    game.engine.world.sync_grid();
-                    editor.cached_solution = None;
-                    editor.toast("Reflected block across Y axis (Flip Y).");
-                }
-            }
-        }
-
-        // 6. Inspector toggle fixed property
-        if toggle_fixed.is_some() {
-            if let Some(id) = editor.selected_body_id {
-                if let Some(body) = game.engine.world.body_mut(id) {
-                    let (can_moveable, can_fixed) = editor.allowed_fixed_state(body.kind);
-                    if can_moveable && can_fixed {
-                        if body.is_fixed() {
-                            body.tags.remove(TagKind::Fixed);
-                            editor.toast("Changed property to Moveable.");
-                        } else {
-                            body.tags.set(TagKind::Fixed, TagValue::Unit);
-                            editor.toast("Changed property to Stationary (Fixed).");
+                        if game.engine.start_playtest().is_ok() {
+                            editor.backup_world = Some(game.engine.frame_zero_star.clone());
+                            playback.is_playback = true;
+                            playback.actions = actions;
+                            playback.current_index = 0;
+                            playback.auto_playing = true;
+                            next_mode.set(AppMode::Playback);
                         }
-                        game.engine.world.sync_grid();
-                        editor.cached_solution = None;
                     } else {
-                        editor.toast("This block kind cannot change its stationary/moveable property.");
+                        editor.toast("No valid solution cached for current level. Click 'Solve Level'.");
                     }
                 }
             }
         }
 
-        // 6. Inspector delete block button
-        if del_btn.is_some() {
-            if let Some(id) = editor.selected_body_id {
-                game.engine.world.despawn(id);
-                editor.selected_body_id = None;
+        // 7. Inspector transforms for all selected bodies
+        if !editor.selected_body_ids.is_empty() {
+            let ids = editor.selected_body_ids.clone();
+            let mut modified = false;
+
+            if rot_x_pos.is_some() {
+                for &id in &ids {
+                    if let Some(body) = game.engine.world.body_mut(id) {
+                        body.orientation = body.orientation.rot_world_x_pos();
+                        modified = true;
+                    }
+                }
+                if modified { editor.toast("Pitched selected block(s) +90° around X axis."); }
+            }
+
+            if rot_x_neg.is_some() {
+                for &id in &ids {
+                    if let Some(body) = game.engine.world.body_mut(id) {
+                        body.orientation = body.orientation.rot_world_x_neg();
+                        modified = true;
+                    }
+                }
+                if modified { editor.toast("Pitched selected block(s) -90° around X axis."); }
+            }
+
+            if rot_y_pos.is_some() {
+                for &id in &ids {
+                    if let Some(body) = game.engine.world.body_mut(id) {
+                        body.orientation = body.orientation.rot_world_y_pos();
+                        modified = true;
+                    }
+                }
+                if modified { editor.toast("Rolled selected block(s) +90° around Y axis."); }
+            }
+
+            if rot_y_neg.is_some() {
+                for &id in &ids {
+                    if let Some(body) = game.engine.world.body_mut(id) {
+                        body.orientation = body.orientation.rot_world_y_neg();
+                        modified = true;
+                    }
+                }
+                if modified { editor.toast("Rolled selected block(s) -90° around Y axis."); }
+            }
+
+            if rot_cw.is_some() {
+                for &id in &ids {
+                    if let Some(body) = game.engine.world.body_mut(id) {
+                        body.orientation = body.orientation.rot_world_z_cw();
+                        modified = true;
+                    }
+                }
+                if modified { editor.toast("Rotated selected block(s) CW around Z axis."); }
+            }
+
+            if rot_ccw.is_some() {
+                for &id in &ids {
+                    if let Some(body) = game.engine.world.body_mut(id) {
+                        body.orientation = body.orientation.rot_world_z_ccw();
+                        modified = true;
+                    }
+                }
+                if modified { editor.toast("Rotated selected block(s) CCW around Z axis."); }
+            }
+
+            if ref_x.is_some() {
+                for &id in &ids {
+                    if let Some(body) = game.engine.world.body_mut(id) {
+                        body.orientation = body.orientation.reflect_x();
+                        modified = true;
+                    }
+                }
+                if modified { editor.toast("Reflected selected block(s) across X axis."); }
+            }
+
+            if ref_y.is_some() {
+                for &id in &ids {
+                    if let Some(body) = game.engine.world.body_mut(id) {
+                        body.orientation = body.orientation.reflect_y();
+                        modified = true;
+                    }
+                }
+                if modified { editor.toast("Reflected selected block(s) across Y axis."); }
+            }
+
+            if toggle_fixed.is_some() {
+                for &id in &ids {
+                    if let Some(body) = game.engine.world.body_mut(id) {
+                        let (can_moveable, can_fixed) = editor.allowed_fixed_state(body.kind);
+                        if can_moveable && can_fixed {
+                            if body.is_fixed() {
+                                body.tags.remove(TagKind::Fixed);
+                            } else {
+                                body.tags.set(TagKind::Fixed, TagValue::Unit);
+                            }
+                            modified = true;
+                        }
+                    }
+                }
+                if modified { editor.toast("Toggled Fixed / Moveable on selected block(s)."); }
+            }
+
+            if combine_btn.is_some() {
+                let all_moveable = ids.iter().all(|&id| {
+                    game.engine.world.body(id).map(|b| b.is_pushable()).unwrap_or(false)
+                });
+                if ids.len() >= 2 && all_moveable {
+                    let group_id = game.engine.world.next_combined_group_id();
+                    for &id in &ids {
+                        if let Some(body) = game.engine.world.body_mut(id) {
+                            body.combined_group = Some(group_id);
+                            modified = true;
+                        }
+                    }
+                    editor.toast(format!("Combined {} blocks into Mega Block #{}", ids.len(), group_id));
+                } else {
+                    editor.toast("Cannot combine: all blocks must be moveable (select 2+ moveable blocks).");
+                }
+            }
+
+            if uncombine_btn.is_some() {
+                for &id in &ids {
+                    if let Some(body) = game.engine.world.body_mut(id) {
+                        if body.combined_group.is_some() {
+                            body.combined_group = None;
+                            modified = true;
+                        }
+                    }
+                }
+                if modified { editor.toast("Uncombined selected blocks from groups."); }
+            }
+
+            if del_btn.is_some() {
+                for &id in &ids {
+                    game.engine.world.despawn(id);
+                }
+                editor.clear_selection();
+                modified = true;
+                editor.toast("Deleted selected block(s).");
+            }
+
+            if modified {
+                game.engine.world.sync_grid();
+                let new_world = game.engine.world.clone();
+                game.engine.update_authoring_world(new_world);
                 editor.cached_solution = None;
-                editor.toast("Deleted selected block.");
             }
         }
     }
@@ -1076,6 +1401,7 @@ fn background_solver_poll_system(
 
 fn draw_editor_selection_gizmos(
     app_mode: Res<State<AppMode>>,
+    camera_query: Query<(&Camera, &GlobalTransform), With<camera::MainCamera>>,
     editor: Res<EditorState>,
     game: Res<GameState>,
     mut gizmos: Gizmos,
@@ -1126,10 +1452,10 @@ fn draw_editor_selection_gizmos(
         }
     }
 
-    // 2. Draw selected body bounding box
-    if let Some(id) = editor.selected_body_id {
+    // 2. Draw selected bodies bounding boxes
+    let col = Color::srgba(0.3, 0.8, 1.0, 0.95);
+    for &id in &editor.selected_body_ids {
         if let Some(body) = game.engine.world.body(id) {
-            let col = Color::srgba(0.3, 0.8, 1.0, 0.95);
             for &cell in &body.world_cells() {
                 let x = cell.x as f32;
                 let y = cell.z as f32;
@@ -1158,6 +1484,32 @@ fn draw_editor_selection_gizmos(
             }
         }
     }
+
+    // 3. Draw active box selection rectangle in FixedLayer mode
+    if editor.box_select_active {
+        if let (Some(start), Ok((camera, camera_transform))) = (editor.box_select_start, camera_query.single()) {
+            if let Some(hovered) = editor.hovered_cell {
+                if let Some(start_cell) = raycast_plane_at_z(camera, camera_transform, start, editor.current_z) {
+                    let min_x = (start_cell.x.min(hovered.x) as f32) - 0.5;
+                    let max_x = (start_cell.x.max(hovered.x) as f32) + 0.5;
+                    let min_y = (start_cell.y.min(hovered.y) as f32) - 0.5;
+                    let max_y = (start_cell.y.max(hovered.y) as f32) + 0.5;
+                    let z_plane = editor.current_z as f32;
+                    let box_col = Color::srgba(1.0, 0.85, 0.2, 0.9);
+
+                    let p1 = Vec3::new(min_x, z_plane + 0.05, -min_y);
+                    let p2 = Vec3::new(max_x, z_plane + 0.05, -min_y);
+                    let p3 = Vec3::new(max_x, z_plane + 0.05, -max_y);
+                    let p4 = Vec3::new(min_x, z_plane + 0.05, -max_y);
+
+                    gizmos.line(p1, p2, box_col);
+                    gizmos.line(p2, p3, box_col);
+                    gizmos.line(p3, p4, box_col);
+                    gizmos.line(p4, p1, box_col);
+                }
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1175,19 +1527,17 @@ fn editor_keyboard_shortcuts_system(
     // Return to Editor from Playtest or Playback mode with Escape, or clear selection / tool
     if keys.just_pressed(KeyCode::Escape) {
         if *app_mode.get() != AppMode::Editor {
-            if let Some(backup) = editor.backup_world.take() {
-                game.engine = TurnEngine::new(backup);
-            }
+            game.engine.end_playtest();
             playback.is_playback = false;
             next_mode.set(AppMode::Editor);
-            editor.toast("Returned to Level Editor.");
+            editor.toast("Returned to Level Editor (Frame 0*).");
             return;
         } else if editor.selected_kind.is_some() {
             editor.selected_kind = None;
             editor.toast("Select-Only mode (Palette tool deselected) [Esc].");
-        } else if editor.selected_body_id.is_some() {
-            editor.selected_body_id = None;
-            editor.toast("Deselected block.");
+        } else if !editor.selected_body_ids.is_empty() {
+            editor.clear_selection();
+            editor.toast("Deselected all blocks.");
         }
     }
 
@@ -1195,8 +1545,8 @@ fn editor_keyboard_shortcuts_system(
         return;
     }
 
-    // Palette selection hotkeys (when not transforming a selected block)
-    if editor.selected_body_id.is_none() {
+    // Palette selection hotkeys (when not transforming selected blocks)
+    if editor.selected_body_ids.is_empty() {
         if keys.just_pressed(KeyCode::KeyP) {
             editor.selected_kind = Some(BlockKind::Player);
             editor.toast("Selected tool: Player [Key: P]");
@@ -1212,6 +1562,12 @@ fn editor_keyboard_shortcuts_system(
         } else if keys.just_pressed(KeyCode::KeyW) {
             editor.selected_kind = Some(BlockKind::Wall);
             editor.toast("Selected tool: Wall [Key: W]");
+        } else if keys.just_pressed(KeyCode::KeyF) {
+            editor.selected_kind = Some(BlockKind::Floor);
+            editor.toast("Selected tool: Floor [Key: F]");
+        } else if keys.just_pressed(KeyCode::KeyK) {
+            editor.selected_kind = Some(BlockKind::Glass);
+            editor.toast("Selected tool: Glass Block [Key: K]");
         } else if keys.just_pressed(KeyCode::KeyG) {
             editor.selected_kind = Some(BlockKind::Goal);
             editor.toast("Selected tool: Goal Pyramid [Key: G]");
@@ -1237,22 +1593,12 @@ fn editor_keyboard_shortcuts_system(
     if keys.just_pressed(KeyCode::PageUp) || keys.just_pressed(KeyCode::BracketRight) {
         let next_z = (editor.current_z + 1).min(20);
         editor.current_z = next_z;
-        editor.toast(format!("Z Layer: {} [PgUp / \\]]", next_z));
+        editor.toast(format!("Z Layer: {}", next_z));
     }
     if keys.just_pressed(KeyCode::PageDown) || keys.just_pressed(KeyCode::BracketLeft) {
         let next_z = (editor.current_z - 1).max(-5);
         editor.current_z = next_z;
-        editor.toast(format!("Z Layer: {} [PgDn / \\[]", next_z));
-    }
-
-    // Delete selected block with Delete / Backspace
-    if keys.just_pressed(KeyCode::Delete) || keys.just_pressed(KeyCode::Backspace) {
-        if let Some(id) = editor.selected_body_id {
-            game.engine.world.despawn(id);
-            editor.selected_body_id = None;
-            editor.cached_solution = None;
-            editor.toast("Deleted selected block.");
-        }
+        editor.toast(format!("Z Layer: {}", next_z));
     }
 }
 
@@ -1309,7 +1655,6 @@ mod tests {
         let w2 = world.spawn(BlockKind::Wall, IVec3::new(3, 4, 1), vec![IVec3::ZERO]);
 
         // Column (3, 4) has blocks at Z=0 and Z=1.
-        // When ignoring w2 (e.g. while dragging w2), highest occupied Z is 0 -> target is Z=1.
         let mut max_z_ignore_w2 = -1;
         for body in world.bodies() {
             if body.id == w2 {
@@ -1335,5 +1680,42 @@ mod tests {
 
         let allowed = editor.allowed_fixed_state(BlockKind::Mirror);
         assert_eq!(allowed, (true, true));
+    }
+
+    #[test]
+    fn multi_select_and_locked_layers_test() {
+        let mut editor = EditorState::default();
+        let id1 = BodyId(1);
+        let id2 = BodyId(2);
+
+        editor.select_single(id1);
+        assert!(editor.is_selected(id1));
+        assert_eq!(editor.selected_body_ids, vec![id1]);
+
+        editor.toggle_selection(id2);
+        assert!(editor.is_selected(id1));
+        assert!(editor.is_selected(id2));
+        assert_eq!(editor.selected_body_ids.len(), 2);
+
+        editor.toggle_selection(id1);
+        assert!(!editor.is_selected(id1));
+        assert!(editor.is_selected(id2));
+
+        // Lock layer test
+        editor.locked_z_layers.insert(-1);
+        assert!(editor.is_layer_locked(-1));
+        assert!(!editor.is_layer_locked(0));
+    }
+
+    #[test]
+    fn fill_floorplan_test() {
+        let mut world = World::new();
+        fill_floorplan(&mut world, 4, 4, -1);
+        assert_eq!(world.bodies().len(), 16);
+        for b in world.bodies() {
+            assert_eq!(b.kind, BlockKind::Floor);
+            assert_eq!(b.anchor.z, -1);
+            assert!(b.is_fixed());
+        }
     }
 }

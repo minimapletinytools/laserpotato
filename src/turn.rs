@@ -13,6 +13,7 @@ use crate::sim::{BodyId, CubeRot, World};
 
 /// Maximum number of movement↔state resolution passes before declaring
 /// a paradox. (See design doc § fixpoint loop.)
+#[allow(dead_code)]
 const MAX_FIXPOINT_PASSES: usize = 16;
 
 // ---------------------------------------------------------------------------
@@ -74,6 +75,8 @@ impl PlayerAction {
         }
     }
 
+    /// Parse an action from a short name.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.trim().to_lowercase().as_str() {
             "forward" | "up" | "w" => Some(PlayerAction::Forward),
@@ -164,12 +167,8 @@ pub fn resolve_frame_one(frame_zero_star: &World) -> (World, Vec<LaserSegment>, 
         .map(|b| (b.id, b.anchor, b.orientation))
         .collect();
 
-    // Multi-pass state / laser resolution fixpoint loop
-    let mut laser_state = Vec::new();
-    for _pass in 0..MAX_FIXPOINT_PASSES {
-        laser_state = laser::cast_all_lasers(&frame1_world);
-        break;
-    }
+    // Multi-pass state / laser resolution
+    let laser_state = laser::cast_all_lasers(&frame1_world);
 
     let outcome = evaluate_outcome(&frame1_world, &laser_state);
 
@@ -216,9 +215,59 @@ impl TurnEngine {
         }
     }
 
-    /// Whether this level passed frame 0 validation without spontaneous movement.
+    /// Whether this level passed frame 1 validation without spontaneous movement.
     pub fn is_valid(&self) -> bool {
         self.validation_error.is_none()
+    }
+
+    /// Update the authoring state (Frame 0*) and re-resolve Frame 1 preview.
+    ///
+    /// In editor authoring mode, the world contains Frame 0* blocks, while laser_state
+    /// contains the Frame 1 resolved laser paths. If spontaneous movement occurs,
+    /// lasers are suppressed and validation_error is populated.
+    pub fn update_authoring_world(&mut self, new_frame_zero_star: World) {
+        self.frame_zero_star = new_frame_zero_star;
+        let (frame1_world, laser_state, outcome, validation_error) = resolve_frame_one(&self.frame_zero_star);
+        self.world = self.frame_zero_star.clone();
+        self.laser_state = if validation_error.is_none() { laser_state } else { Vec::new() };
+        self.outcome = outcome;
+        self.initial_world = frame1_world;
+        self.validation_error = validation_error;
+    }
+
+    /// Refresh Frame 1 preview state from current frame_zero_star.
+    pub fn refresh_preview(&mut self) {
+        let (frame1_world, laser_state, outcome, validation_error) = resolve_frame_one(&self.frame_zero_star);
+        self.laser_state = if validation_error.is_none() { laser_state } else { Vec::new() };
+        self.outcome = outcome;
+        self.initial_world = frame1_world;
+        self.validation_error = validation_error;
+    }
+
+    /// Prepare engine to enter Playtest mode starting at Frame 1.
+    pub fn start_playtest(&mut self) -> Result<(), String> {
+        let (frame1_world, laser_state, outcome, validation_error) = resolve_frame_one(&self.frame_zero_star);
+        if let Some(err) = validation_error {
+            return Err(err);
+        }
+        self.world = frame1_world.clone();
+        self.initial_world = frame1_world;
+        self.laser_state = laser_state;
+        self.outcome = outcome;
+        self.undo_stack.clear();
+        self.validation_error = None;
+        Ok(())
+    }
+
+    /// Return from Playtest mode back to Frame 0* authoring state.
+    pub fn end_playtest(&mut self) {
+        let (frame1_world, laser_state, outcome, validation_error) = resolve_frame_one(&self.frame_zero_star);
+        self.world = self.frame_zero_star.clone();
+        self.laser_state = if validation_error.is_none() { laser_state } else { Vec::new() };
+        self.outcome = outcome;
+        self.initial_world = frame1_world;
+        self.undo_stack.clear();
+        self.validation_error = validation_error;
     }
 
     /// Convenience helper for checking if the player has won.
@@ -283,11 +332,8 @@ impl TurnEngine {
         // --- movement phase -----------------------------------------------
         self.resolve_movement(&action);
 
-        // --- state / laser phase (with fixpoint loop) ---------------------
-        for _pass in 0..MAX_FIXPOINT_PASSES {
-            self.laser_state = laser::cast_all_lasers(&self.world);
-            break;
-        }
+        // --- state / laser phase ------------------------------------------
+        self.laser_state = laser::cast_all_lasers(&self.world);
 
         self.outcome = evaluate_outcome(&self.world, &self.laser_state);
 

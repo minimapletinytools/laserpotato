@@ -1166,10 +1166,10 @@ pub fn animate_laser_pfx(
 // ---------------------------------------------------------------------------
 
 /// Toggle for the 3D coordinate frame gizmo in the bottom-left.
-pub const SHOW_COORDINATE_GIZMO: bool = true;
+pub const SHOW_COORDINATE_GIZMO: bool = false;
 
 /// Toggle for the 2D coordinate axes legend HUD overlay in the bottom-left.
-pub const SHOW_COORDINATE_LEGEND: bool = true;
+pub const SHOW_COORDINATE_LEGEND: bool = false;
 
 /// Toggle for the ground grid lines overlay.
 pub const SHOW_GRID: bool = true;
