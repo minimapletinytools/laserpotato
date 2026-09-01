@@ -124,25 +124,57 @@ pub struct LevelBodyData {
 
 pub use crate::turn::validate_solution;
 
-/// A named sequence of player actions representing a valid solution to a puzzle.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+/// A named sequence of player actions representing a valid solution to a puzzle,
+/// optionally paired with quality/epiphany analysis metadata.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct LevelSolution {
     pub name: String,
     pub actions: Vec<crate::turn::PlayerAction>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<crate::solver::PuzzleProfile>,
+}
+
+impl LevelSolution {
+    pub fn new(name: impl Into<String>, actions: Vec<crate::turn::PlayerAction>) -> Self {
+        Self {
+            name: name.into(),
+            actions,
+            profile: None,
+        }
+    }
+
+    pub fn with_profile(
+        name: impl Into<String>,
+        actions: Vec<crate::turn::PlayerAction>,
+        profile: Option<crate::solver::PuzzleProfile>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            actions,
+            profile,
+        }
+    }
 }
 
 /// Serializable puzzle level data.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct LevelData {
     pub name: String,
     pub bodies: Vec<LevelBodyData>,
     #[serde(default)]
     pub solutions: Vec<LevelSolution>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quality_profile: Option<crate::solver::PuzzleProfile>,
 }
 
 impl LevelData {
-    /// Convert an active [`World`] into a [`LevelData`] snapshot with solutions.
-    pub fn from_world_with_solutions(name: impl Into<String>, world: &World, solutions: Vec<LevelSolution>) -> Self {
+    /// Convert an active [`World`] into a [`LevelData`] snapshot with solutions and quality profile.
+    pub fn from_world_with_solutions_and_profile(
+        name: impl Into<String>,
+        world: &World,
+        solutions: Vec<LevelSolution>,
+        quality_profile: Option<crate::solver::PuzzleProfile>,
+    ) -> Self {
         let mut bodies = Vec::new();
         for body in world.bodies() {
             bodies.push(LevelBodyData {
@@ -157,12 +189,18 @@ impl LevelData {
             name: name.into(),
             bodies,
             solutions,
+            quality_profile,
         }
+    }
+
+    /// Convert an active [`World`] into a [`LevelData`] snapshot with solutions.
+    pub fn from_world_with_solutions(name: impl Into<String>, world: &World, solutions: Vec<LevelSolution>) -> Self {
+        Self::from_world_with_solutions_and_profile(name, world, solutions, None)
     }
 
     /// Convert an active [`World`] into a [`LevelData`] snapshot.
     pub fn from_world(name: impl Into<String>, world: &World) -> Self {
-        Self::from_world_with_solutions(name, world, Vec::new())
+        Self::from_world_with_solutions_and_profile(name, world, Vec::new(), None)
     }
 
     /// Reconstruct a playable [`World`] from this [`LevelData`].
@@ -405,15 +443,22 @@ mod tests {
     fn level_solution_serialization_test() {
         let world = test_level();
         let solutions = vec![
-            LevelSolution {
-                name: "Solver Solution".into(),
-                actions: vec![crate::turn::PlayerAction::Forward, crate::turn::PlayerAction::TurnLeft],
-            }
+            LevelSolution::new(
+                "Solver Solution",
+                vec![crate::turn::PlayerAction::Forward, crate::turn::PlayerAction::TurnLeft],
+            )
         ];
-        let data = LevelData::from_world_with_solutions("Test Level With Solutions", &world, solutions.clone());
+        let profile = crate::solver::analyze_puzzle(&world);
+        let data = LevelData::from_world_with_solutions_and_profile(
+            "Test Level With Solutions",
+            &world,
+            solutions.clone(),
+            Some(profile.clone()),
+        );
         let json = serde_json::to_string(&data).unwrap();
         let deserialized: LevelData = serde_json::from_str(&json).unwrap();
 
         assert_eq!(deserialized.solutions, solutions);
+        assert_eq!(deserialized.quality_profile, Some(profile));
     }
 }

@@ -11,7 +11,7 @@ use crate::solver::macro_move::MacroArchetype;
 use crate::solver::search::{search, Algorithm, SolverConfig};
 
 /// Comprehensive quality and complexity profile for a puzzle level.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PuzzleProfile {
     /// Whether the puzzle has a valid winning solution.
     pub is_solvable: bool,
@@ -19,6 +19,9 @@ pub struct PuzzleProfile {
     pub macro_steps: usize,
     /// Number of atomic player turns in the optimal solution.
     pub atomic_turns: usize,
+    /// Sequence of atomic player actions for the optimal solution path.
+    #[serde(default)]
+    pub optimal_actions: Vec<crate::turn::PlayerAction>,
     /// Epiphany / Deception Score: ratio of greedy exploration to optimal path.
     pub epiphany_score: f32,
     /// Percentage (0.0 - 1.0) of bodies on the board that are strictly load-bearing.
@@ -78,6 +81,7 @@ pub fn analyze_puzzle(world: &World) -> PuzzleProfile {
             is_solvable: false,
             macro_steps: 0,
             atomic_turns: 0,
+            optimal_actions: Vec::new(),
             epiphany_score: 0.0,
             load_bearing_factor: 0.0,
             redundant_bodies: Vec::new(),
@@ -87,6 +91,7 @@ pub fn analyze_puzzle(world: &World) -> PuzzleProfile {
 
     let macro_steps = opt_res.macro_count();
     let atomic_turns = opt_res.step_count();
+    let optimal_actions = opt_res.actions.clone();
     let milestones: Vec<MacroArchetype> = opt_res.macro_moves.iter().map(|m| m.archetype.clone()).collect();
 
     // 2. Greedy Solve (Best-First) to compute Epiphany Score
@@ -144,6 +149,7 @@ pub fn analyze_puzzle(world: &World) -> PuzzleProfile {
         is_solvable: true,
         macro_steps,
         atomic_turns,
+        optimal_actions,
         epiphany_score,
         load_bearing_factor,
         redundant_bodies,

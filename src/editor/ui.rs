@@ -2594,8 +2594,13 @@ pub fn update_solution_picker_ui_system(
                         BackgroundColor(Color::srgba(0.12, 0.22, 0.32, 0.9)),
                     ))
                     .with_children(|b| {
+                        let profile_suffix = if let Some(p) = &sol.profile {
+                            format!(" | Epiphany {:.1}, {:.0}% Load-Bearing", p.epiphany_score, p.load_bearing_factor * 100.0)
+                        } else {
+                            String::new()
+                        };
                         b.spawn((
-                            Text::new(format!("[PLAY] #{}: {} ({} steps)", idx + 1, sol.name, sol.actions.len())),
+                            Text::new(format!("[PLAY] #{}: {} ({} steps){}", idx + 1, sol.name, sol.actions.len(), profile_suffix)),
                             TextFont::from_font_size(12.0),
                             TextColor(Color::srgb(0.4, 0.9, 0.7)),
                         ));

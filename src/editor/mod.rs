@@ -793,7 +793,12 @@ pub fn execute_save_as(editor: &mut EditorState, world: &World) {
     // Prune invalid solutions against current world before saving
     editor.solutions.retain(|s| level::validate_solution(world, &s.actions));
 
-    let level_data = LevelData::from_world_with_solutions("Custom Level", world, editor.solutions.clone());
+    let level_data = LevelData::from_world_with_solutions_and_profile(
+        "Custom Level",
+        world,
+        editor.solutions.clone(),
+        editor.puzzle_profile.clone(),
+    );
     match level::save_level_to_file(&save_path, &level_data) {
         Ok(_) => {
             editor.current_level_path = save_path.clone();
@@ -1558,7 +1563,12 @@ fn editor_button_clicks_system(
                     let path = editor.current_level_path.clone();
                     editor.solutions.retain(|s| level::validate_solution(&game.engine.world, &s.actions));
                     let sol_count = editor.solutions.len();
-                    let level_data = LevelData::from_world_with_solutions("Custom Level", &game.engine.world, editor.solutions.clone());
+                    let level_data = LevelData::from_world_with_solutions_and_profile(
+                        "Custom Level",
+                        &game.engine.world,
+                        editor.solutions.clone(),
+                        editor.puzzle_profile.clone(),
+                    );
                     match level::save_level_to_file(&path, &level_data) {
                         Ok(_) => {
                             editor.last_saved_hash = compute_level_hash(&game.engine.world);
@@ -1630,10 +1640,10 @@ fn editor_button_clicks_system(
                             editor.toast(format!("Instant cached solution available: {} step(s)!", sol.len()));
                             editor.solutions.retain(|s| level::validate_solution(&game.engine.world, &s.actions));
                             if !editor.solutions.iter().any(|s| s.actions == sol) {
-                                editor.solutions.push(crate::level::LevelSolution {
-                                    name: "Optimal Solver Solution".into(),
-                                    actions: sol.clone(),
-                                });
+                                editor.solutions.push(crate::level::LevelSolution::new(
+                                    "Optimal Solver Solution",
+                                    sol.clone(),
+                                ));
                             }
                             editor.solution_picker_open = true;
                             editor.solution_picker_dirty = true;
@@ -1671,6 +1681,7 @@ fn editor_button_clicks_system(
                     let (tx, rx) = mpsc::channel();
                     editor.analyzer_rx = Some(Arc::new(Mutex::new(rx)));
                     editor.analyzing_hash = Some(current_hash);
+                    editor.solver_status = "Analyzing quality in background...".into();
                     editor.toast("Analyzing puzzle quality in background...");
 
                     std::thread::spawn(move || {
@@ -1957,6 +1968,7 @@ fn file_picker_button_clicks_system(
                     editor.last_saved_hash = compute_level_hash(&game.engine.world);
                     editor.solutions = lvl.solutions.clone();
                     editor.solutions.retain(|s| level::validate_solution(&game.engine.world, &s.actions));
+                    editor.puzzle_profile = lvl.quality_profile.clone();
                     let sol_count = editor.solutions.len();
                     editor.clear_selection();
                     editor.clear_history();
@@ -2074,12 +2086,15 @@ fn background_solver_poll_system(
                 );
                 editor.cached_solution = Some((current_hash, result.actions.clone()));
                 let name = format!("Solver A* ({} moves, {} turns)", result.macro_moves.len(), result.actions.len());
-                if !editor.solutions.iter().any(|s| s.actions == result.actions) {
-                    editor.solutions.push(crate::level::LevelSolution {
+                if let Some(existing) = editor.solutions.iter_mut().find(|s| s.actions == result.actions) {
+                    existing.name = name;
+                } else {
+                    editor.solutions.push(crate::level::LevelSolution::new(
                         name,
-                        actions: result.actions.clone(),
-                    });
+                        result.actions.clone(),
+                    ));
                 }
+                editor.solution_picker_dirty = true;
                 let msg = format!(
                     "Solver: Found {}-move ({}-turn) solution in {:.2?} (added to solutions)!",
                     result.macro_moves.len(),
@@ -2114,11 +2129,45 @@ fn background_solver_poll_system(
         let current_hash = compute_level_hash(&game.engine.world);
 
         if analyzed_hash == current_hash {
-            editor.puzzle_profile = Some(profile);
+            editor.puzzle_profile = Some(profile.clone());
             editor.quality_modal_open = true;
             editor.quality_modal_dirty = true;
+
+            if profile.is_solvable {
+                editor.solver_status = format!(
+                    "✓ Analyzed: {} moves (Epiphany {:.1}, {:.0}% Load-Bearing)",
+                    profile.macro_steps,
+                    profile.epiphany_score,
+                    profile.load_bearing_factor * 100.0
+                );
+
+                if !profile.optimal_actions.is_empty() {
+                    editor.cached_solution = Some((current_hash, profile.optimal_actions.clone()));
+                    let sol_name = format!(
+                        "Optimal Solution ({} moves, {} turns, Epiphany {:.1})",
+                        profile.macro_steps,
+                        profile.atomic_turns,
+                        profile.epiphany_score
+                    );
+                    if let Some(existing) = editor.solutions.iter_mut().find(|s| s.actions == profile.optimal_actions) {
+                        existing.name = sol_name;
+                        existing.profile = Some(profile.clone());
+                    } else {
+                        editor.solutions.push(crate::level::LevelSolution::with_profile(
+                            sol_name,
+                            profile.optimal_actions.clone(),
+                            Some(profile.clone()),
+                        ));
+                    }
+                    editor.solution_picker_dirty = true;
+                }
+            } else {
+                editor.solver_status = "✗ Unsolvable (Quality Analyzed)".into();
+            }
+
             editor.toast("Puzzle Quality Analysis complete!");
         } else {
+            editor.solver_status = "Level modified during analysis. Invalidated.".into();
             editor.toast("Level modified during analysis. Invalidated.");
         }
     }
@@ -2384,7 +2433,12 @@ fn editor_keyboard_shortcuts_system(
             let path = editor.current_level_path.clone();
             editor.solutions.retain(|s| level::validate_solution(&game.engine.world, &s.actions));
             let sol_count = editor.solutions.len();
-            let level_data = LevelData::from_world_with_solutions("Custom Level", &game.engine.world, editor.solutions.clone());
+            let level_data = LevelData::from_world_with_solutions_and_profile(
+                "Custom Level",
+                &game.engine.world,
+                editor.solutions.clone(),
+                editor.puzzle_profile.clone(),
+            );
             if let Ok(_) = level::save_level_to_file(&path, &level_data) {
                 editor.last_saved_hash = compute_level_hash(&game.engine.world);
                 editor.toast(format!("Saved level with {} solution(s) to {}", sol_count, path));
@@ -2724,15 +2778,15 @@ mod tests {
         world.body_mut(pid).unwrap().orientation = crate::sim::CubeRot::from_facing_2d(IVec3::X);
 
         // Solution 1: valid 1-step push into laser beam
-        editor.solutions.push(crate::level::LevelSolution {
-            name: "Push Mirror Win".into(),
-            actions: vec![PlayerAction::Forward],
-        });
+        editor.solutions.push(crate::level::LevelSolution::new(
+            "Push Mirror Win",
+            vec![PlayerAction::Forward],
+        ));
         // Solution 2: invalid sequence that never wins
-        editor.solutions.push(crate::level::LevelSolution {
-            name: "Invalid Turn".into(),
-            actions: vec![PlayerAction::TurnLeft],
-        });
+        editor.solutions.push(crate::level::LevelSolution::new(
+            "Invalid Turn",
+            vec![PlayerAction::TurnLeft],
+        ));
 
         assert_eq!(editor.solutions.len(), 2);
 

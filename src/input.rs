@@ -59,10 +59,7 @@ pub fn keyboard_input_system(
                     let actions = game.engine.action_history.clone();
                     let name = format!("Player Play #{} ({} steps)", ed.solutions.len() + 1, actions.len());
                     if !ed.solutions.iter().any(|s| s.actions == actions) {
-                        ed.solutions.push(crate::level::LevelSolution {
-                            name,
-                            actions,
-                        });
+                        ed.solutions.push(crate::level::LevelSolution::new(name, actions));
                         ed.toast(format!("Level Solved! Solution recorded ({} steps).", game.engine.action_history.len()));
                     }
                 }
