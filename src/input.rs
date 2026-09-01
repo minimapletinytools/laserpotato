@@ -1,6 +1,6 @@
 //! Keyboard → [`PlayerAction`](crate::turn::PlayerAction) translation.
 //!
-//! Instantaneous direct key translation to the turn engine in Playtest mode.
+//! Instantaneous direct key translation to the turn engine in Playtest and Play modes.
 
 use bevy::prelude::*;
 
@@ -20,7 +20,7 @@ use crate::GameState;
 pub fn keyboard_input_system(
     keys: Res<ButtonInput<KeyCode>>,
     mut game: ResMut<GameState>,
-    mut editor: ResMut<crate::editor::EditorState>,
+    mut editor: Option<ResMut<crate::editor::EditorState>>,
 ) {
     let mut action = None;
 
@@ -53,21 +53,23 @@ pub fn keyboard_input_system(
 
     if let Some(act) = action {
         game.engine.apply(act);
-        if game.engine.is_won() && !editor.playtest_win_recorded {
-            if !game.engine.action_history.is_empty() {
-                let actions = game.engine.action_history.clone();
-                let name = format!("Player Play #{} ({} steps)", editor.solutions.len() + 1, actions.len());
-                if !editor.solutions.iter().any(|s| s.actions == actions) {
-                    editor.solutions.push(crate::level::LevelSolution {
-                        name,
-                        actions,
-                    });
-                    editor.toast(format!("Level Solved! Solution recorded ({} steps).", game.engine.action_history.len()));
+        if let Some(ref mut ed) = editor {
+            if game.engine.is_won() && !ed.playtest_win_recorded {
+                if !game.engine.action_history.is_empty() {
+                    let actions = game.engine.action_history.clone();
+                    let name = format!("Player Play #{} ({} steps)", ed.solutions.len() + 1, actions.len());
+                    if !ed.solutions.iter().any(|s| s.actions == actions) {
+                        ed.solutions.push(crate::level::LevelSolution {
+                            name,
+                            actions,
+                        });
+                        ed.toast(format!("Level Solved! Solution recorded ({} steps).", game.engine.action_history.len()));
+                    }
                 }
+                ed.playtest_win_recorded = true;
+            } else if !game.engine.is_won() {
+                ed.playtest_win_recorded = false;
             }
-            editor.playtest_win_recorded = true;
-        } else if !game.engine.is_won() {
-            editor.playtest_win_recorded = false;
         }
     }
 }

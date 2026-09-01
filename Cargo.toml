@@ -3,6 +3,7 @@ name = "laserpotato"
 version = "0.1.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
+default-run = "laserpotato"
 
 [lib]
 name = "laserpotato"
@@ -13,6 +14,10 @@ name = "laserpotato"
 path = "src/main.rs"
 
 [[bin]]
+name = "play"
+path = "src/bin/play.rs"
+
+[[bin]]
 name = "solver"
 path = "src/bin/solver.rs"
 
@@ -21,3 +26,7 @@ bevy = "0.19.0"
 glam = { version = "0.32", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+web-time = "1.1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3", features = ["Window", "Location"] }

@@ -3,41 +3,7 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 
-mod editor;
-mod input;
-mod render;
-
-pub use laserpotato::{block_types, laser, level, sim, solver, turn};
-
-/// Bevy resource wrapping the pure-logic [`TurnEngine`](turn::TurnEngine).
-#[derive(Resource)]
-pub struct GameState {
-    pub engine: turn::TurnEngine,
-}
-
-/// Resource controlling solution replay/playback mode.
-#[derive(Resource)]
-pub struct PlaybackState {
-    pub is_playback: bool,
-    pub actions: Vec<turn::PlayerAction>,
-    pub current_index: usize,
-    pub auto_playing: bool,
-    pub speed: f32,
-    pub step_timer: Timer,
-}
-
-impl Default for PlaybackState {
-    fn default() -> Self {
-        Self {
-            is_playback: false,
-            actions: Vec::new(),
-            current_index: 0,
-            auto_playing: true,
-            speed: 1.0,
-            step_timer: Timer::new(Duration::from_millis(400), TimerMode::Repeating),
-        }
-    }
-}
+pub use laserpotato::{block_types, camera, editor, input, laser, level, render, sim, solver, turn, GameState, PlaybackState};
 
 /// Marker component for the playtest/playback banner.
 #[derive(Component)]

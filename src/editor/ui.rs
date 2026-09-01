@@ -278,6 +278,8 @@ pub fn setup_editor_ui(mut commands: Commands) {
                         spawn_action_btn(group, EditorAction::Save, "Save");
                         spawn_action_btn(group, EditorAction::SaveAs, "Save As");
                         spawn_action_btn(group, EditorAction::OpenLevel, "Open");
+                        spawn_action_btn(group, EditorAction::Undo, "Undo");
+                        spawn_action_btn(group, EditorAction::Redo, "Redo");
                         spawn_action_btn(group, EditorAction::ToggleFloorplanModal, "Floorplan");
                         spawn_action_btn(group, EditorAction::ToggleFramePreview, "Preview: 1");
                     });
@@ -1307,7 +1309,7 @@ pub fn setup_editor_ui(mut commands: Commands) {
 
                         // Instructions / shortcuts hint
                         sidebar.spawn((
-                            Text::new("Controls:\n- Shift+Click: Multi-Select\n- Box Drag (Layer): Multi-Select\n- Esc: Select Mode / Clear\n- L-Click: Place / Select\n- Drag (Stack): Move Block\n- R-Click: Delete Block\n- Tab: Toggle Z Mode\n- PgUp/PgDn: Change Z\n- Q / E: Rotate View 90 deg\n- WASD: Pan Camera"),
+                            Text::new("Controls:\n- ⌘Z / ⇧⌘Z: Undo / Redo\n- ⌘S: Save Level\n- Shift+Click: Multi-Select\n- Box Drag (Layer): Multi-Select\n- Esc: Select Mode / Clear\n- L-Click: Place / Select\n- Drag (Stack): Move Block\n- R-Click: Delete Block\n- Tab: Toggle Z Mode\n- PgUp/PgDn: Change Z\n- Q / E: Rotate View 90 deg\n- WASD: Pan Camera"),
                             TextFont::from_font_size(11.0),
                             TextColor(TEXT_MUTED),
                         ));
@@ -2048,6 +2050,12 @@ pub fn update_editor_status_and_modal_ui_system(
                 } else {
                     BTN_SUCCESS
                 };
+            }
+            EditorAction::Undo => {
+                bg.0 = if editor.can_undo() { BTN_NORMAL } else { BTN_DISABLED };
+            }
+            EditorAction::Redo => {
+                bg.0 = if editor.can_redo() { BTN_NORMAL } else { BTN_DISABLED };
             }
             EditorAction::ToggleFloorplanModal => {
                 bg.0 = if editor.floorplan_open { BTN_ACTIVE } else { BTN_NORMAL };

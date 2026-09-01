@@ -45,6 +45,8 @@ pub enum EditorAction {
     Save,
     SaveAs,
     OpenLevel,
+    Undo,
+    Redo,
     ToggleFloorplanModal,
     ToggleFramePreview,
     RotateViewCcw,
@@ -66,6 +68,17 @@ pub enum ZPlacementMode {
     #[default]
     StackOnTop,
     FixedLayer,
+}
+
+/// A single snapshot in the level editor's undo / redo history.
+#[derive(Clone, Debug)]
+pub struct EditorSnapshot {
+    /// Deep copy of the authoring world (Frame 0*).
+    pub world: World,
+    /// Selected body IDs at the time of this state.
+    pub selected_body_ids: Vec<BodyId>,
+    /// Human-readable action description.
+    pub description: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -92,6 +105,8 @@ pub struct EditorState {
     pub drag_origin_cell: Option<IVec3>,
     /// Whether block dragging is currently active (drag distance exceeded threshold).
     pub drag_active: bool,
+    /// Snapshot of world at the beginning of an active drag gesture.
+    pub drag_start_world: Option<World>,
     /// Screen start coordinate for drag box selection in FixedLayer mode.
     pub box_select_start: Option<Vec2>,
     /// Whether box selection is currently active.
@@ -150,6 +165,10 @@ pub struct EditorState {
     pub backup_world: Option<World>,
     /// Toast notification banner message & decay timer.
     pub status_message: Option<(String, Timer)>,
+    /// Undo history stack.
+    pub undo_stack: Vec<EditorSnapshot>,
+    /// Redo history stack.
+    pub redo_stack: Vec<EditorSnapshot>,
 }
 
 pub const MIN_BLOCK_DRAG_PIXELS: f32 = 18.0;
@@ -170,6 +189,7 @@ impl Default for EditorState {
             drag_start_cursor: None,
             drag_origin_cell: None,
             drag_active: false,
+            drag_start_world: None,
             box_select_start: None,
             box_select_active: false,
             locked_z_layers,
@@ -199,11 +219,85 @@ impl Default for EditorState {
             cached_solution: None,
             backup_world: None,
             status_message: None,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
         }
     }
 }
 
 impl EditorState {
+    /// Push an undo snapshot before mutating the world. Clears the redo stack.
+    pub fn push_undo_snapshot(&mut self, world: &World, description: impl Into<String>) {
+        let snapshot = EditorSnapshot {
+            world: world.clone(),
+            selected_body_ids: self.selected_body_ids.clone(),
+            description: description.into(),
+        };
+        self.undo_stack.push(snapshot);
+        if self.undo_stack.len() > 100 {
+            self.undo_stack.remove(0);
+        }
+        self.redo_stack.clear();
+    }
+
+    /// Perform an Undo: restore the world and selection from the top of undo_stack,
+    /// and push the current world to redo_stack.
+    pub fn perform_undo(&mut self, engine: &mut TurnEngine) -> Option<String> {
+        let prev = self.undo_stack.pop()?;
+        let current = EditorSnapshot {
+            world: engine.world.clone(),
+            selected_body_ids: self.selected_body_ids.clone(),
+            description: prev.description.clone(),
+        };
+        self.redo_stack.push(current);
+
+        let desc = prev.description;
+        engine.update_authoring_world(prev.world);
+        self.selected_body_ids = prev.selected_body_ids
+            .into_iter()
+            .filter(|&id| engine.world.body(id).is_some())
+            .collect();
+        self.cached_solution = None;
+        self.toast(format!("Undo: {} ({} left in history)", desc, self.undo_stack.len()));
+        Some(desc)
+    }
+
+    /// Perform a Redo: restore the world and selection from the top of redo_stack,
+    /// and push the current world to undo_stack.
+    pub fn perform_redo(&mut self, engine: &mut TurnEngine) -> Option<String> {
+        let next = self.redo_stack.pop()?;
+        let current = EditorSnapshot {
+            world: engine.world.clone(),
+            selected_body_ids: self.selected_body_ids.clone(),
+            description: next.description.clone(),
+        };
+        self.undo_stack.push(current);
+
+        let desc = next.description;
+        engine.update_authoring_world(next.world);
+        self.selected_body_ids = next.selected_body_ids
+            .into_iter()
+            .filter(|&id| engine.world.body(id).is_some())
+            .collect();
+        self.cached_solution = None;
+        self.toast(format!("Redo: {} ({} available)", desc, self.redo_stack.len()));
+        Some(desc)
+    }
+
+    pub fn can_undo(&self) -> bool {
+        !self.undo_stack.is_empty()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        !self.redo_stack.is_empty()
+    }
+
+    pub fn clear_history(&mut self) {
+        self.undo_stack.clear();
+        self.redo_stack.clear();
+        self.drag_start_world = None;
+    }
+
     /// Return the stage ground level Z (where items sit on top of the floor).
     pub fn stage_ground_z(&self) -> i32 {
         self.floorplan_z + 1
@@ -216,6 +310,7 @@ impl EditorState {
 
     /// Reset level and create a new blank 10x10 puzzle room with perimeter walls and player.
     pub fn create_new_blank_room(&mut self, engine: &mut TurnEngine) {
+        self.push_undo_snapshot(&engine.world, "New Blank Room");
         let mut world = World::new();
         fill_floorplan(&mut world, 10, 10, -1);
         world.spawn(BlockKind::Player, IVec3::new(3, 8, 0), vec![IVec3::ZERO]);
@@ -730,13 +825,15 @@ fn editor_grid_interaction_system(
     }
 
     let shift_held = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
+    let modifier_held = keyboard.pressed(KeyCode::SuperLeft) || keyboard.pressed(KeyCode::SuperRight) || keyboard.pressed(KeyCode::ControlLeft) || keyboard.pressed(KeyCode::ControlRight);
 
-    // 1. Multi-block transform shortcuts for all selected blocks
-    if !editor.selected_body_ids.is_empty() {
+    // 1. Multi-block transform shortcuts for all selected blocks (when Cmd/Ctrl not held)
+    if !modifier_held && !editor.selected_body_ids.is_empty() {
         let ids = editor.selected_body_ids.clone();
         let mut modified = false;
 
         if keyboard.just_pressed(KeyCode::KeyR) {
+            editor.push_undo_snapshot(&game.engine.world, "Rotate Block(s) CW");
             for &id in &ids {
                 if let Some(b) = game.engine.world.body_mut(id) {
                     b.orientation = b.orientation.rot_world_z_cw();
@@ -747,6 +844,7 @@ fn editor_grid_interaction_system(
                 editor.toast("Rotated selected block(s) CW around Z axis [R].");
             }
         } else if keyboard.just_pressed(KeyCode::KeyT) {
+            editor.push_undo_snapshot(&game.engine.world, "Pitch Block(s) +90°");
             for &id in &ids {
                 if let Some(b) = game.engine.world.body_mut(id) {
                     b.orientation = b.orientation.rot_world_x_pos();
@@ -757,6 +855,7 @@ fn editor_grid_interaction_system(
                 editor.toast("Pitched selected block(s) +90° around X axis [T].");
             }
         } else if keyboard.just_pressed(KeyCode::KeyG) {
+            editor.push_undo_snapshot(&game.engine.world, "Roll Block(s) +90°");
             for &id in &ids {
                 if let Some(b) = game.engine.world.body_mut(id) {
                     b.orientation = b.orientation.rot_world_y_pos();
@@ -767,6 +866,7 @@ fn editor_grid_interaction_system(
                 editor.toast("Rolled selected block(s) +90° around Y axis [G].");
             }
         } else if keyboard.just_pressed(KeyCode::KeyX) {
+            editor.push_undo_snapshot(&game.engine.world, "Flip Block(s) X");
             for &id in &ids {
                 if let Some(b) = game.engine.world.body_mut(id) {
                     b.orientation = b.orientation.reflect_x();
@@ -777,6 +877,7 @@ fn editor_grid_interaction_system(
                 editor.toast("Flipped selected block(s) across X axis [X].");
             }
         } else if keyboard.just_pressed(KeyCode::KeyY) {
+            editor.push_undo_snapshot(&game.engine.world, "Flip Block(s) Y");
             for &id in &ids {
                 if let Some(b) = game.engine.world.body_mut(id) {
                     b.orientation = b.orientation.reflect_y();
@@ -787,6 +888,7 @@ fn editor_grid_interaction_system(
                 editor.toast("Flipped selected block(s) across Y axis [Y].");
             }
         } else if keyboard.just_pressed(KeyCode::Delete) || keyboard.just_pressed(KeyCode::Backspace) {
+            editor.push_undo_snapshot(&game.engine.world, format!("Delete {} Block(s)", ids.len()));
             for &id in &ids {
                 game.engine.world.despawn(id);
             }
@@ -876,6 +978,8 @@ fn editor_grid_interaction_system(
                 let (can_moveable, can_fixed) = editor.allowed_fixed_state(kind);
                 let is_fixed = if !can_moveable { true } else if !can_fixed { false } else { editor.is_fixed };
 
+                editor.push_undo_snapshot(&game.engine.world, format!("Place {:?}", kind));
+
                 if kind == BlockKind::Player {
                     if let Some(player_id) = game.engine.world.player_id() {
                         if let Some(p) = game.engine.world.body_mut(player_id) {
@@ -888,6 +992,7 @@ fn editor_grid_interaction_system(
                             editor.drag_start_cursor = None;
                             editor.drag_origin_cell = None;
                             editor.drag_active = false;
+                            editor.drag_start_world = None;
                             editor.toast(format!("Relocated player character to ({}, {}, {}).", place_target.x, place_target.y, place_target.z));
                             editor.cached_solution = None;
                             return;
@@ -909,6 +1014,7 @@ fn editor_grid_interaction_system(
                 editor.drag_start_cursor = None;
                 editor.drag_origin_cell = None;
                 editor.drag_active = false;
+                editor.drag_start_world = None;
                 editor.cached_solution = None;
                 if editor.z_mode == ZPlacementMode::StackOnTop && place_target.z > editor.stage_ground_z() {
                     editor.toast(format!("Stacked {:?} on top at ({}, {}, {})", kind, place_target.x, place_target.y, place_target.z));
@@ -932,6 +1038,7 @@ fn editor_grid_interaction_system(
                         editor.drag_start_cursor = None;
                         editor.drag_origin_cell = None;
                         editor.drag_active = false;
+                        editor.drag_start_world = None;
                     } else {
                         if !editor.is_selected(body_id) {
                             editor.select_single(body_id);
@@ -941,6 +1048,7 @@ fn editor_grid_interaction_system(
                         editor.drag_start_cursor = Some(cursor_pos);
                         editor.drag_origin_cell = Some(cell_pos);
                         editor.drag_active = false;
+                        editor.drag_start_world = Some(game.engine.world.clone());
                         editor.box_select_start = None;
                         editor.box_select_active = false;
                     }
@@ -951,6 +1059,7 @@ fn editor_grid_interaction_system(
                     editor.drag_start_cursor = None;
                     editor.drag_origin_cell = None;
                     editor.drag_active = false;
+                    editor.drag_start_world = None;
                 } else {
                     // Normal click on empty space: clear selection & start box select
                     editor.clear_selection();
@@ -959,6 +1068,7 @@ fn editor_grid_interaction_system(
                     editor.drag_start_cursor = None;
                     editor.drag_origin_cell = None;
                     editor.drag_active = false;
+                    editor.drag_start_world = None;
                 }
             } else {
                 // StackOnTop Select Mode
@@ -973,6 +1083,7 @@ fn editor_grid_interaction_system(
                         editor.drag_start_cursor = Some(cursor_pos);
                         editor.drag_origin_cell = Some(cell_pos);
                         editor.drag_active = false;
+                        editor.drag_start_world = Some(game.engine.world.clone());
                         editor.toast(format!("Selected block (ID {}).", body_id.0));
                     }
                 } else if !shift_held {
@@ -981,6 +1092,7 @@ fn editor_grid_interaction_system(
                     editor.drag_start_cursor = None;
                     editor.drag_origin_cell = None;
                     editor.drag_active = false;
+                    editor.drag_start_world = None;
                 }
             }
         }
@@ -1042,6 +1154,21 @@ fn editor_grid_interaction_system(
 
     // 3. Release Left Click
     if mouse_button.just_released(MouseButton::Left) {
+        if let Some(start_world) = editor.drag_start_world.take() {
+            if editor.drag_active && compute_level_hash(&start_world) != compute_level_hash(&game.engine.world) {
+                let sel = editor.selected_body_ids.clone();
+                editor.undo_stack.push(EditorSnapshot {
+                    world: start_world,
+                    selected_body_ids: sel,
+                    description: "Move Block(s)".into(),
+                });
+                if editor.undo_stack.len() > 100 {
+                    editor.undo_stack.remove(0);
+                }
+                editor.redo_stack.clear();
+            }
+        }
+
         if editor.z_mode == ZPlacementMode::FixedLayer {
             if editor.box_select_active {
                 if let (Some(start), Ok((camera, camera_transform))) = (editor.box_select_start.take(), camera_query.single()) {
@@ -1108,12 +1235,14 @@ fn editor_grid_interaction_system(
         if let Some(id) = to_delete {
             if let Some(body) = game.engine.world.body(id) {
                 if !editor.is_layer_locked(body.anchor.z) {
+                    editor.push_undo_snapshot(&game.engine.world, "Delete Block");
                     game.engine.world.despawn(id);
                     editor.selected_body_ids.retain(|&x| x != id);
                     if editor.dragging_body_id == Some(id) {
                         editor.dragging_body_id = None;
                         editor.drag_start_cursor = None;
                         editor.drag_active = false;
+                        editor.drag_start_world = None;
                     }
                     game.engine.world.sync_grid();
                     let new_world = game.engine.world.clone();
@@ -1308,6 +1437,7 @@ fn editor_button_clicks_system(
             let w = editor.floorplan_width;
             let h = editor.floorplan_height;
             let z = editor.floorplan_z;
+            editor.push_undo_snapshot(&game.engine.world, "Fill Floorplan");
             fill_floorplan(&mut game.engine.world, w, h, z);
             let new_world = game.engine.world.clone();
             game.engine.update_authoring_world(new_world);
@@ -1367,6 +1497,16 @@ fn editor_button_clicks_system(
                         editor.unsaved_confirm_open = true;
                     } else {
                         editor.open_file_picker();
+                    }
+                }
+                EditorAction::Undo => {
+                    if editor.perform_undo(&mut game.engine).is_none() {
+                        editor.toast("Nothing to undo.");
+                    }
+                }
+                EditorAction::Redo => {
+                    if editor.perform_redo(&mut game.engine).is_none() {
+                        editor.toast("Nothing to redo.");
                     }
                 }
                 EditorAction::ToggleFloorplanModal => {
@@ -1448,6 +1588,7 @@ fn editor_button_clicks_system(
             let mut modified = false;
 
             if rot_x_pos.is_some() {
+                editor.push_undo_snapshot(&game.engine.world, "Pitch +X");
                 for &id in &ids {
                     if let Some(body) = game.engine.world.body_mut(id) {
                         body.orientation = body.orientation.rot_world_x_pos();
@@ -1458,6 +1599,7 @@ fn editor_button_clicks_system(
             }
 
             if rot_x_neg.is_some() {
+                editor.push_undo_snapshot(&game.engine.world, "Pitch -X");
                 for &id in &ids {
                     if let Some(body) = game.engine.world.body_mut(id) {
                         body.orientation = body.orientation.rot_world_x_neg();
@@ -1468,6 +1610,7 @@ fn editor_button_clicks_system(
             }
 
             if rot_y_pos.is_some() {
+                editor.push_undo_snapshot(&game.engine.world, "Roll +Y");
                 for &id in &ids {
                     if let Some(body) = game.engine.world.body_mut(id) {
                         body.orientation = body.orientation.rot_world_y_pos();
@@ -1478,6 +1621,7 @@ fn editor_button_clicks_system(
             }
 
             if rot_y_neg.is_some() {
+                editor.push_undo_snapshot(&game.engine.world, "Roll -Y");
                 for &id in &ids {
                     if let Some(body) = game.engine.world.body_mut(id) {
                         body.orientation = body.orientation.rot_world_y_neg();
@@ -1488,6 +1632,7 @@ fn editor_button_clicks_system(
             }
 
             if rot_cw.is_some() {
+                editor.push_undo_snapshot(&game.engine.world, "Rotate CW");
                 for &id in &ids {
                     if let Some(body) = game.engine.world.body_mut(id) {
                         body.orientation = body.orientation.rot_world_z_cw();
@@ -1498,6 +1643,7 @@ fn editor_button_clicks_system(
             }
 
             if rot_ccw.is_some() {
+                editor.push_undo_snapshot(&game.engine.world, "Rotate CCW");
                 for &id in &ids {
                     if let Some(body) = game.engine.world.body_mut(id) {
                         body.orientation = body.orientation.rot_world_z_ccw();
@@ -1508,6 +1654,7 @@ fn editor_button_clicks_system(
             }
 
             if ref_x.is_some() {
+                editor.push_undo_snapshot(&game.engine.world, "Reflect X");
                 for &id in &ids {
                     if let Some(body) = game.engine.world.body_mut(id) {
                         body.orientation = body.orientation.reflect_x();
@@ -1518,6 +1665,7 @@ fn editor_button_clicks_system(
             }
 
             if ref_y.is_some() {
+                editor.push_undo_snapshot(&game.engine.world, "Reflect Y");
                 for &id in &ids {
                     if let Some(body) = game.engine.world.body_mut(id) {
                         body.orientation = body.orientation.reflect_y();
@@ -1528,6 +1676,7 @@ fn editor_button_clicks_system(
             }
 
             if toggle_fixed.is_some() {
+                editor.push_undo_snapshot(&game.engine.world, "Toggle Fixed/Moveable");
                 for &id in &ids {
                     if let Some(body) = game.engine.world.body_mut(id) {
                         let (can_moveable, can_fixed) = editor.allowed_fixed_state(body.kind);
@@ -1549,6 +1698,7 @@ fn editor_button_clicks_system(
                     game.engine.world.body(id).map(|b| b.is_pushable()).unwrap_or(false)
                 });
                 if ids.len() >= 2 && all_moveable {
+                    editor.push_undo_snapshot(&game.engine.world, "Combine Mega Block");
                     let group_id = game.engine.world.next_combined_group_id();
                     for &id in &ids {
                         if let Some(body) = game.engine.world.body_mut(id) {
@@ -1563,18 +1713,25 @@ fn editor_button_clicks_system(
             }
 
             if uncombine_btn.is_some() {
-                for &id in &ids {
-                    if let Some(body) = game.engine.world.body_mut(id) {
-                        if body.combined_group.is_some() {
-                            body.combined_group = None;
-                            modified = true;
+                let has_group = ids.iter().any(|&id| {
+                    game.engine.world.body(id).map(|b| b.combined_group.is_some()).unwrap_or(false)
+                });
+                if has_group {
+                    editor.push_undo_snapshot(&game.engine.world, "Uncombine Group");
+                    for &id in &ids {
+                        if let Some(body) = game.engine.world.body_mut(id) {
+                            if body.combined_group.is_some() {
+                                body.combined_group = None;
+                                modified = true;
+                            }
                         }
                     }
+                    if modified { editor.toast("Uncombined selected blocks from groups."); }
                 }
-                if modified { editor.toast("Uncombined selected blocks from groups."); }
             }
 
             if del_btn.is_some() {
+                editor.push_undo_snapshot(&game.engine.world, format!("Delete {} Block(s)", ids.len()));
                 for &id in &ids {
                     game.engine.world.despawn(id);
                 }
@@ -1634,6 +1791,7 @@ fn file_picker_button_clicks_system(
                     editor.solutions.retain(|s| level::validate_solution(&game.engine.world, &s.actions));
                     let sol_count = editor.solutions.len();
                     editor.clear_selection();
+                    editor.clear_history();
                     editor.cached_solution = None;
                     editor.solver_status = "Idle".into();
                     editor.file_picker_open = false;
@@ -1983,6 +2141,48 @@ fn editor_keyboard_shortcuts_system(
     }
 
     if *app_mode.get() != AppMode::Editor {
+        return;
+    }
+
+    let cmd_held = keys.pressed(KeyCode::SuperLeft) || keys.pressed(KeyCode::SuperRight);
+    let ctrl_held = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
+    let modifier_held = cmd_held || ctrl_held;
+    let shift_held = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+
+    // Undo / Redo & Save shortcuts:
+    // Cmd+Z / Ctrl+Z (Undo)
+    // Cmd+Shift+Z / Ctrl+Shift+Z / Cmd+Y / Ctrl+Y (Redo)
+    // Cmd+S / Ctrl+S (Save)
+    if modifier_held {
+        if keys.just_pressed(KeyCode::KeyZ) {
+            if shift_held {
+                if editor.perform_redo(&mut game.engine).is_none() {
+                    editor.toast("Nothing to redo.");
+                }
+            } else {
+                if editor.perform_undo(&mut game.engine).is_none() {
+                    editor.toast("Nothing to undo.");
+                }
+            }
+            return;
+        }
+        if keys.just_pressed(KeyCode::KeyY) {
+            if editor.perform_redo(&mut game.engine).is_none() {
+                editor.toast("Nothing to redo.");
+            }
+            return;
+        }
+        if keys.just_pressed(KeyCode::KeyS) {
+            let path = editor.current_level_path.clone();
+            editor.solutions.retain(|s| level::validate_solution(&game.engine.world, &s.actions));
+            let sol_count = editor.solutions.len();
+            let level_data = LevelData::from_world_with_solutions("Custom Level", &game.engine.world, editor.solutions.clone());
+            if let Ok(_) = level::save_level_to_file(&path, &level_data) {
+                editor.last_saved_hash = compute_level_hash(&game.engine.world);
+                editor.toast(format!("Saved level with {} solution(s) to {}", sol_count, path));
+            }
+            return;
+        }
         return;
     }
 
@@ -2337,5 +2537,91 @@ mod tests {
         editor.solution_picker_open = true;
         assert!(editor.close_modals());
         assert!(!editor.solution_picker_open);
+    }
+
+    #[test]
+    fn editor_undo_redo_test() {
+        let mut editor = EditorState::default();
+        let mut engine = TurnEngine::new(World::new());
+
+        assert!(!editor.can_undo());
+        assert!(!editor.can_redo());
+
+        // 1. Initial state: 0 bodies
+        assert_eq!(engine.world.bodies().len(), 0);
+
+        // 2. Action 1: Place a Wall at (1, 1, 0)
+        editor.push_undo_snapshot(&engine.world, "Place Wall");
+        let w1 = engine.world.spawn(BlockKind::Wall, IVec3::new(1, 1, 0), vec![IVec3::ZERO]);
+        engine.world.sync_grid();
+        engine.update_authoring_world(engine.world.clone());
+        editor.select_single(w1);
+
+        assert_eq!(engine.world.bodies().len(), 1);
+        assert!(editor.can_undo());
+        assert!(!editor.can_redo());
+        assert_eq!(editor.undo_stack.len(), 1);
+
+        // 3. Action 2: Rotate Wall CW
+        editor.push_undo_snapshot(&engine.world, "Rotate Wall CW");
+        if let Some(b) = engine.world.body_mut(w1) {
+            b.orientation = b.orientation.rot_world_z_cw();
+        }
+        engine.world.sync_grid();
+        engine.update_authoring_world(engine.world.clone());
+
+        assert_eq!(editor.undo_stack.len(), 2);
+        let rot_after_action2 = engine.world.body(w1).unwrap().orientation;
+
+        // 4. Action 3: Place a Pushable Crate at (2, 2, 0)
+        editor.push_undo_snapshot(&engine.world, "Place Pushable");
+        let c1 = engine.world.spawn(BlockKind::Pushable, IVec3::new(2, 2, 0), vec![IVec3::ZERO]);
+        engine.world.sync_grid();
+        engine.update_authoring_world(engine.world.clone());
+        editor.select_single(c1);
+
+        assert_eq!(engine.world.bodies().len(), 2);
+        assert_eq!(editor.undo_stack.len(), 3);
+
+        // 5. Undo Action 3 (Placement of Pushable)
+        let undo_desc = editor.perform_undo(&mut engine);
+        assert_eq!(undo_desc.as_deref(), Some("Place Pushable"));
+        assert_eq!(engine.world.bodies().len(), 1);
+        assert!(engine.world.body(w1).is_some());
+        assert!(engine.world.body(c1).is_none());
+        assert_eq!(editor.selected_body_ids, vec![w1]);
+        assert!(editor.can_undo());
+        assert!(editor.can_redo());
+
+        // 6. Undo Action 2 (Rotation of Wall)
+        let undo_desc2 = editor.perform_undo(&mut engine);
+        assert_eq!(undo_desc2.as_deref(), Some("Rotate Wall CW"));
+        assert_eq!(engine.world.bodies().len(), 1);
+        assert_ne!(engine.world.body(w1).unwrap().orientation, rot_after_action2);
+
+        // 7. Undo Action 1 (Placement of Wall)
+        let undo_desc3 = editor.perform_undo(&mut engine);
+        assert_eq!(undo_desc3.as_deref(), Some("Place Wall"));
+        assert_eq!(engine.world.bodies().len(), 0);
+        assert!(!editor.can_undo());
+        assert!(editor.can_redo());
+        assert_eq!(editor.redo_stack.len(), 3);
+
+        // 8. Redo Action 1 (Restores Wall)
+        let redo_desc1 = editor.perform_redo(&mut engine);
+        assert_eq!(redo_desc1.as_deref(), Some("Place Wall"));
+        assert_eq!(engine.world.bodies().len(), 1);
+        assert!(editor.can_undo());
+        assert_eq!(editor.redo_stack.len(), 2);
+
+        // 9. New Action while Redo stack has items clears Redo stack
+        editor.push_undo_snapshot(&engine.world, "Place Mirror");
+        engine.world.spawn(BlockKind::Mirror, IVec3::new(4, 4, 0), vec![IVec3::ZERO]);
+        engine.world.sync_grid();
+        engine.update_authoring_world(engine.world.clone());
+
+        assert_eq!(engine.world.bodies().len(), 2);
+        assert!(!editor.can_redo());
+        assert_eq!(editor.redo_stack.len(), 0);
     }
 }

@@ -2,7 +2,8 @@
 
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 use crate::sim::World;
 use crate::solver::heuristic::{self, HeuristicKind};

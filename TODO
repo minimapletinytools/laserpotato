@@ -111,7 +111,7 @@ DONE-the prveiwe on/off doesn't seem to do anything, it always shows preview on,
 DONE-in z layer mode there should be agrid line drawn over the layer you are working on, in stack mode, it draws it one above the floor level as it current does.
 
 
--in z layer mode, other stuff should be made transparent
+DONE-in z layer mode, other stuff should be made transparent (looks kinda bad lol)
     -I tihnk we need a render thingy for blocks allowing you t olayer modifiers on, this is both for the editor and for play mode renderin.g cany ou think of some dieas?
 
 
