@@ -28,6 +28,8 @@ pub struct GeneratorConfig {
     pub min_epiphany_score: f32,
     /// Whether all interactive blocks on the board must be strictly load-bearing (0 red herrings).
     pub require_load_bearing: bool,
+    /// Automatically prune/delete non-load-bearing red herring blocks to distill the puzzle to its minimal core.
+    pub auto_prune_redundant: bool,
     /// Maximum search nodes for the initial fast solve sieve.
     pub max_solve_nodes: usize,
     /// Timeout for the initial fast solve sieve.
@@ -42,6 +44,7 @@ impl Default for GeneratorConfig {
             max_macro_steps: None,
             min_epiphany_score: 1.5,
             require_load_bearing: true,
+            auto_prune_redundant: true,
             max_solve_nodes: 10_000,
             solve_timeout: Duration::from_millis(150),
         }
@@ -111,9 +114,22 @@ pub fn evaluate_seed(seed: u64, config: &GeneratorConfig) -> Option<DiscoveredPu
     }
 
     // 3. Deep Quality & Epiphany Profiling
-    let profile = analyze_puzzle(&world);
+    let mut current_world = world;
+    let mut profile = analyze_puzzle(&current_world);
     if !profile.is_solvable {
         return None;
+    }
+
+    // Automatically prune redundant pieces if enabled
+    if config.auto_prune_redundant && !profile.redundant_bodies.is_empty() {
+        for body_id in &profile.redundant_bodies {
+            current_world.despawn(*body_id);
+        }
+        current_world.sync_grid();
+        profile = analyze_puzzle(&current_world);
+        if !profile.is_solvable {
+            return None;
+        }
     }
 
     if profile.macro_steps < config.min_macro_steps {
@@ -145,7 +161,7 @@ pub fn evaluate_seed(seed: u64, config: &GeneratorConfig) -> Option<DiscoveredPu
 
     Some(DiscoveredPuzzle {
         seed,
-        world,
+        world: current_world,
         profile,
         solution,
     })

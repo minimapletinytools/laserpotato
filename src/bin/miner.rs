@@ -101,6 +101,9 @@ fn main() {
             "--allow-redundant" => {
                 config.require_load_bearing = false;
             }
+            "--no-prune" => {
+                config.auto_prune_redundant = false;
+            }
             "-w" | "--width" => {
                 i += 1;
                 config.candidate_spec.width = args[i].parse().expect("Invalid --width");
