@@ -581,21 +581,19 @@ pub fn collect_push_chain(world: &World, mover_id: BodyId, direction: IVec3) -> 
                 }
             }
 
-            // 2. Frictional Stack Drag: if moving horizontally, any block resting directly above (cell + Z) moves along
+            // 2. Frictional Stack Drag: if moving horizontally, any moveable block resting directly above (cell + Z) moves along.
+            // If the block above is immovable / fixed, it does not move, allowing the lower block to slide out underneath it.
             if direction.z == 0 {
                 let above_cell = cell + IVec3::Z;
                 if let Some(above_id) = world.grid().occupant_at(above_cell) {
                     if !chain.contains(&above_id) {
                         let above_body = world.body(above_id).unwrap();
-                        if !above_body.is_pushable() {
-                            // Immovable fixed block resting on top prevents the lower block from sliding
-                            return None;
-                        }
-
-                        let group_members = world.combined_group_members(above_id);
-                        for member in group_members {
-                            if !chain.contains(&member) {
-                                chain.push(member);
+                        if above_body.is_pushable() {
+                            let group_members = world.combined_group_members(above_id);
+                            for member in group_members {
+                                if !chain.contains(&member) {
+                                    chain.push(member);
+                                }
                             }
                         }
                     }
@@ -1118,7 +1116,7 @@ mod tests {
     }
 
     #[test]
-    fn fixed_block_on_top_prevents_sliding() {
+    fn fixed_block_on_top_allows_sliding_underneath() {
         let mut world = World::new();
         for x in 0..5 {
             let fid = world.spawn(BlockKind::Floor, IVec3::new(x, 0, -1), vec![IVec3::ZERO]);
@@ -1135,9 +1133,10 @@ mod tests {
         let mut engine = TurnEngine::new(world);
         assert_eq!(engine.apply(PlayerAction::Forward), TurnResult::Ok);
 
-        // Immovable fixed block on top prevented A from sliding
-        assert_eq!(engine.world.body(pid).unwrap().anchor, IVec3::new(0, 0, 0));
-        assert_eq!(engine.world.body(aid).unwrap().anchor, IVec3::new(1, 0, 0));
+        // Lower block A slides out to (2, 0, 0), Player moves to (1, 0, 0), and fixed block B remains at (1, 0, 1) without falling
+        assert_eq!(engine.world.body(pid).unwrap().anchor, IVec3::new(1, 0, 0));
+        assert_eq!(engine.world.body(aid).unwrap().anchor, IVec3::new(2, 0, 0));
+        assert_eq!(engine.world.body(bid).unwrap().anchor, IVec3::new(1, 0, 1));
     }
 
     #[test]

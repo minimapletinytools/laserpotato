@@ -82,10 +82,10 @@ When body $A$ is pushed in direction $\vec{d}$:
 
 ### Rule 2: Frictional Stack Drag
 When body $A$ moves **horizontally** ($\vec{d}_z = 0$):
-- Any moveable body $B$ resting directly on top of $A$ (at $p_A + \hat{z}$) is pulled into the kinetic push chain.
-- This rule applies transitively to any further bodies $C$ stacked on top of $B$.
-- **Overhead Obstruction**: If $B$ (or any stacked body above) encounters an obstacle at $p_B + \vec{d}$ that cannot be pushed, the entire push is blocked.
-- **Fixed Overhead Lock**: If a fixed/immovable body rests on top of $A$, $A$ cannot slide out from underneath, and the push is blocked.
+- **Moveable Overhead Blocks**: Any moveable body $B$ resting directly on top of $A$ (at $p_A + \hat{z}$) is pulled into the kinetic push chain.
+  - This rule applies transitively to any further bodies $C$ stacked on top of $B$.
+  - **Overhead Obstruction**: If $B$ (or any stacked body above) encounters an obstacle at $p_B + \vec{d}$ that cannot be pushed, the entire push is blocked.
+- **Immovable Overhead Blocks**: If an immovable/fixed body rests on top of $A$ (e.g. fixed mirror, wall), it does **not** move. Lower body $A$ is permitted to slide out from underneath it, and the fixed overhead body remains stationary in place without falling.
 
 ### Rule 3: Decoupled Upper Sliding
 If the player directly pushes an elevated block $B$ at $z > 0$:
