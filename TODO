@@ -108,9 +108,9 @@ DONE-in z layer mode, after somethingis selected, click by drag moves the entire
 DONE-blocks that can't be toggled immovable should have the toggle immoveable button grayed out
 DONE-add slight mouse drag camera tilting when in play mode so you can shift the camear around just a bit to see form diff angles (snaps back to orig view on release, at most 25 degrees rotation I guess)
 DONE-the prveiwe on/off doesn't seem to do anything, it always shows preview on, also the button state dosent change, only the status bar at the bottom shows it.
+DONE-in z layer mode there should be agrid line drawn over the layer you are working on, in stack mode, it draws it one above the floor level as it current does.
 
 
--in z layer mode there should be agrid line drawn over the layer you are working on, in stack mode, it draws it one above the floor level as it current does.
 -in z layer mode, other stuff should be made transparent
     -I tihnk we need a render thingy for blocks allowing you t olayer modifiers on, this is both for the editor and for play mode renderin.g cany ou think of some dieas?
 

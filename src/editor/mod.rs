@@ -302,76 +302,17 @@ pub fn update_palette_3d_preview(
             !editor.is_fixed
         };
 
-        let (target_mesh, target_mat) = match selected_kind {
-            BlockKind::Player => (render_assets.player_mesh.clone(), render_assets.player_mat.clone()),
-            BlockKind::Goal => {
-                let m = if is_moveable {
-                    render_assets.moveable_goal_mat.clone()
-                } else {
-                    render_assets.goal_mat.clone()
-                };
-                let mesh = if is_moveable {
-                    render_assets.rounded_pyramid_mesh.clone()
-                } else {
-                    render_assets.pyramid_mesh.clone()
-                };
-                (mesh, m)
-            }
-            BlockKind::Wall => (render_assets.cube_mesh.clone(), render_assets.fixed_wall_mat.clone()),
-            BlockKind::Floor => (render_assets.cube_mesh.clone(), render_assets.floor_mat.clone()),
-            BlockKind::Glass => {
-                let m = if is_moveable {
-                    render_assets.moveable_glass_mat.clone()
-                } else {
-                    render_assets.fixed_glass_mat.clone()
-                };
-                let mesh = if is_moveable {
-                    render_assets.rounded_cube_mesh.clone()
-                } else {
-                    render_assets.cube_mesh.clone()
-                };
-                (mesh, m)
-            }
-            BlockKind::Pushable => {
-                let m = if is_moveable {
-                    render_assets.moveable_pushable_mat.clone()
-                } else {
-                    render_assets.fixed_pushable_mat.clone()
-                };
-                let mesh = if is_moveable {
-                    render_assets.rounded_cube_mesh.clone()
-                } else {
-                    render_assets.cube_mesh.clone()
-                };
-                (mesh, m)
-            }
-            BlockKind::Mirror => {
-                let m = if is_moveable {
-                    render_assets.moveable_mirror_mat.clone()
-                } else {
-                    render_assets.fixed_mirror_mat.clone()
-                };
-                let mesh = if is_moveable {
-                    render_assets.rounded_mirror_mesh.clone()
-                } else {
-                    render_assets.mirror_mesh.clone()
-                };
-                (mesh, m)
-            }
-            BlockKind::LaserSource => {
-                let m = if is_moveable {
-                    render_assets.moveable_laser_mat.clone()
-                } else {
-                    render_assets.fixed_laser_mat.clone()
-                };
-                let mesh = if is_moveable {
-                    render_assets.rounded_cube_mesh.clone()
-                } else {
-                    render_assets.cube_mesh.clone()
-                };
-                (mesh, m)
-            }
-        };
+        let visual_spec = crate::render::BlockVisualSpec::from_kind_and_props(
+            selected_kind,
+            is_moveable,
+            false,
+            false,
+            false,
+            None,
+            true,
+        );
+        let target_mesh = render_assets.resolve_mesh(&visual_spec.mesh);
+        let target_mat = render_assets.resolve_material(&visual_spec.material);
 
         mesh.0 = target_mesh;
         mat.0 = target_mat;

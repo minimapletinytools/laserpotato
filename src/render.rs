@@ -70,6 +70,10 @@ pub struct RenderAssets {
     pub floor_mat: Handle<StandardMaterial>,
     pub goal_mat: Handle<StandardMaterial>,
 
+    // Layer Focus / Inactive Layer Ghosting
+    pub ghost_above_mat: Handle<StandardMaterial>,
+    pub fade_below_mat: Handle<StandardMaterial>,
+
     // Laser Source Indicator & Beams
     pub laser_indicator_mat: Handle<StandardMaterial>,
     pub laser_core_mat: Handle<StandardMaterial>,
@@ -84,6 +88,230 @@ pub struct RenderAssets {
     pub rounded_mirror_mesh: Handle<Mesh>,
     pub rounded_mirror_mesh_chiral: Handle<Mesh>,
     pub rounded_pyramid_mesh: Handle<Mesh>,
+}
+
+// ---------------------------------------------------------------------------
+// Block Visual Pipeline & Modifier Specification
+// ---------------------------------------------------------------------------
+
+/// Pure visual specification for how a block entity or UI preview is rendered.
+/// Completely decoupled from game rules, tags, or solver logic.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct BlockVisualSpec {
+    pub mesh: MeshSpec,
+    pub material: MaterialSpec,
+}
+
+/// Shape / geometry specification for block meshes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum MeshSpec {
+    Cube { chamfered: bool },
+    Mirror { chamfered: bool, chiral: bool },
+    Pyramid { chamfered: bool },
+    PlayerDodecahedron,
+}
+
+/// Optical and surface appearance specification.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct MaterialSpec {
+    pub base_style: BlockBaseStyle,
+    pub surface_pattern: SurfacePattern,
+    pub emissive_effect: EmissiveEffect,
+    pub opacity: OpacityLayer,
+}
+
+/// Fundamental aesthetic style category for a block type.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum BlockBaseStyle {
+    PlayerDefault,
+    PushableCrate,
+    Mirror,
+    LaserSource,
+    Glass,
+    Wall,
+    Floor,
+    Goal,
+}
+
+/// Surface pattern overlay.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum SurfacePattern {
+    Solid,
+    PolkaDotDarkened,
+}
+
+/// Optical emissive glow / PFX state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum EmissiveEffect {
+    None,
+    EnergizedWon,
+    CharredEmbers,
+    GlassCore,
+}
+
+/// Opacity and layer transparency modifiers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum OpacityLayer {
+    Opaque,
+    GlassTranslucent,
+    GhostAboveLayer, // X-ray ghost for layers above active Z (15% alpha)
+    FadeBelowLayer,  // Contextual fade for layers below active Z (35% alpha)
+}
+
+/// Context passed to the mapping layer to resolve game/editor state into a visual specification.
+#[allow(dead_code)]
+pub struct VisualMappingContext {
+    pub is_editor: bool,
+    pub show_preview: bool,
+    pub active_z: Option<i32>,
+    pub is_goal_hit: bool,
+}
+
+impl BlockVisualSpec {
+    /// Maps a simulation `Body` and its environmental context into a pure `BlockVisualSpec`.
+    pub fn from_body(body: &crate::sim::Body, ctx: &VisualMappingContext) -> Self {
+        let is_moveable = body.is_pushable();
+        let is_chiral = body.orientation.is_reflection();
+        let is_burnt = body.is_burnt();
+
+        Self::from_kind_and_props(
+            body.kind,
+            is_moveable,
+            is_chiral,
+            is_burnt,
+            ctx.is_goal_hit,
+            ctx.active_z.map(|az| (body.anchor.z, az)),
+            ctx.show_preview,
+        )
+    }
+
+    /// Direct factory mapping from intrinsic visual properties to a `BlockVisualSpec`.
+    pub fn from_kind_and_props(
+        kind: BlockKind,
+        is_moveable: bool,
+        is_chiral: bool,
+        is_burnt: bool,
+        is_goal_hit: bool,
+        layer_info: Option<(i32, i32)>, // (body_z, active_z)
+        show_preview: bool,
+    ) -> Self {
+        let chamfered = is_moveable;
+
+        let mesh = match kind {
+            BlockKind::Player => MeshSpec::PlayerDodecahedron,
+            BlockKind::Goal => MeshSpec::Pyramid { chamfered },
+            BlockKind::Mirror => MeshSpec::Mirror {
+                chamfered,
+                chiral: is_chiral,
+            },
+            BlockKind::Pushable
+            | BlockKind::LaserSource
+            | BlockKind::Glass
+            | BlockKind::Wall
+            | BlockKind::Floor => MeshSpec::Cube { chamfered },
+        };
+
+        let base_style = match kind {
+            BlockKind::Player => BlockBaseStyle::PlayerDefault,
+            BlockKind::Pushable => BlockBaseStyle::PushableCrate,
+            BlockKind::Mirror => BlockBaseStyle::Mirror,
+            BlockKind::LaserSource => BlockBaseStyle::LaserSource,
+            BlockKind::Glass => BlockBaseStyle::Glass,
+            BlockKind::Wall => BlockBaseStyle::Wall,
+            BlockKind::Floor => BlockBaseStyle::Floor,
+            BlockKind::Goal => BlockBaseStyle::Goal,
+        };
+
+        let surface_pattern = if is_moveable {
+            SurfacePattern::Solid
+        } else {
+            SurfacePattern::PolkaDotDarkened
+        };
+
+        let emissive_effect = if kind == BlockKind::Player && is_burnt && show_preview {
+            EmissiveEffect::CharredEmbers
+        } else if kind == BlockKind::Goal && is_goal_hit && show_preview {
+            EmissiveEffect::EnergizedWon
+        } else if kind == BlockKind::Glass && is_moveable {
+            EmissiveEffect::GlassCore
+        } else {
+            EmissiveEffect::None
+        };
+
+        let opacity = if let Some((body_z, active_z)) = layer_info {
+            if body_z > active_z {
+                OpacityLayer::GhostAboveLayer
+            } else if body_z < active_z {
+                OpacityLayer::FadeBelowLayer
+            } else if kind == BlockKind::Glass {
+                OpacityLayer::GlassTranslucent
+            } else {
+                OpacityLayer::Opaque
+            }
+        } else if kind == BlockKind::Glass {
+            OpacityLayer::GlassTranslucent
+        } else {
+            OpacityLayer::Opaque
+        };
+
+        Self {
+            mesh,
+            material: MaterialSpec {
+                base_style,
+                surface_pattern,
+                emissive_effect,
+                opacity,
+            },
+        }
+    }
+}
+
+impl RenderAssets {
+    /// Resolve a `MeshSpec` into a concrete Bevy `Mesh` handle.
+    pub fn resolve_mesh(&self, spec: &MeshSpec) -> Handle<Mesh> {
+        match spec {
+            MeshSpec::PlayerDodecahedron => self.player_mesh.clone(),
+            MeshSpec::Cube { chamfered: true } => self.rounded_cube_mesh.clone(),
+            MeshSpec::Cube { chamfered: false } => self.cube_mesh.clone(),
+            MeshSpec::Mirror { chamfered: true, chiral: true } => self.rounded_mirror_mesh_chiral.clone(),
+            MeshSpec::Mirror { chamfered: true, chiral: false } => self.rounded_mirror_mesh.clone(),
+            MeshSpec::Mirror { chamfered: false, chiral: true } => self.mirror_mesh_chiral.clone(),
+            MeshSpec::Mirror { chamfered: false, chiral: false } => self.mirror_mesh.clone(),
+            MeshSpec::Pyramid { chamfered: true } => self.rounded_pyramid_mesh.clone(),
+            MeshSpec::Pyramid { chamfered: false } => self.pyramid_mesh.clone(),
+        }
+    }
+
+    /// Resolve a `MaterialSpec` into a concrete Bevy `StandardMaterial` handle.
+    pub fn resolve_material(&self, spec: &MaterialSpec) -> Handle<StandardMaterial> {
+        match spec.opacity {
+            OpacityLayer::GhostAboveLayer => return self.ghost_above_mat.clone(),
+            OpacityLayer::FadeBelowLayer => return self.fade_below_mat.clone(),
+            _ => {}
+        }
+
+        match spec.emissive_effect {
+            EmissiveEffect::CharredEmbers => return self.player_burnt_mat.clone(),
+            EmissiveEffect::EnergizedWon => return self.goal_won_mat.clone(),
+            _ => {}
+        }
+
+        match (spec.base_style, spec.surface_pattern) {
+            (BlockBaseStyle::PlayerDefault, _) => self.player_mat.clone(),
+            (BlockBaseStyle::PushableCrate, SurfacePattern::Solid) => self.moveable_pushable_mat.clone(),
+            (BlockBaseStyle::PushableCrate, SurfacePattern::PolkaDotDarkened) => self.fixed_pushable_mat.clone(),
+            (BlockBaseStyle::Mirror, SurfacePattern::Solid) => self.moveable_mirror_mat.clone(),
+            (BlockBaseStyle::Mirror, SurfacePattern::PolkaDotDarkened) => self.fixed_mirror_mat.clone(),
+            (BlockBaseStyle::LaserSource, SurfacePattern::Solid) => self.moveable_laser_mat.clone(),
+            (BlockBaseStyle::LaserSource, SurfacePattern::PolkaDotDarkened) => self.fixed_laser_mat.clone(),
+            (BlockBaseStyle::Glass, SurfacePattern::Solid) => self.moveable_glass_mat.clone(),
+            (BlockBaseStyle::Glass, SurfacePattern::PolkaDotDarkened) => self.fixed_glass_mat.clone(),
+            (BlockBaseStyle::Wall, _) => self.fixed_wall_mat.clone(),
+            (BlockBaseStyle::Floor, _) => self.floor_mat.clone(),
+            (BlockBaseStyle::Goal, SurfacePattern::Solid) => self.moveable_goal_mat.clone(),
+            (BlockBaseStyle::Goal, SurfacePattern::PolkaDotDarkened) => self.goal_mat.clone(),
+        }
+    }
 }
 
 /// Startup system — create shared meshes and materials.
@@ -286,6 +514,26 @@ pub fn setup_render_assets(
             metallic: 0.7,
             perceptual_roughness: 0.15,
             emissive: LinearRgba::new(1.8, 1.4, 0.5, 1.0),
+            double_sided: true,
+            ..default()
+        }),
+
+        // X-ray ghost material for blocks above active layer in Z-layer mode
+        ghost_above_mat: materials.add(StandardMaterial {
+            base_color: Color::srgba(0.85, 0.92, 1.0, 0.15),
+            alpha_mode: AlphaMode::Blend,
+            perceptual_roughness: 0.1,
+            cull_mode: None,
+            double_sided: true,
+            ..default()
+        }),
+
+        // Translucent contextual fade for blocks below active layer in Z-layer mode
+        fade_below_mat: materials.add(StandardMaterial {
+            base_color: Color::srgba(0.40, 0.45, 0.55, 0.35),
+            alpha_mode: AlphaMode::Blend,
+            perceptual_roughness: 0.5,
+            cull_mode: None,
             double_sided: true,
             ..default()
         }),
@@ -992,14 +1240,24 @@ pub fn sync_bodies(
     let mut seen = std::collections::HashSet::new();
     let mut to_despawn = Vec::new();
 
-    let show_preview = if let (Some(mode), Some(ed)) = (&app_mode, &editor) {
-        if *mode.get() == AppMode::Editor {
-            ed.show_frame1_preview
-        } else {
-            true
-        }
+    let is_editor_mode = app_mode.as_ref().map(|s| *s.get() == AppMode::Editor).unwrap_or(false);
+
+    let show_preview = if is_editor_mode {
+        editor.as_ref().map(|ed| ed.show_frame1_preview).unwrap_or(true)
     } else {
         true
+    };
+
+    let active_z = if is_editor_mode {
+        editor.as_ref().and_then(|ed| {
+            if ed.z_mode == crate::editor::ZPlacementMode::FixedLayer {
+                Some(ed.current_z)
+            } else {
+                None
+            }
+        })
+    } else {
+        None
     };
 
     let hit_body_ids: std::collections::HashSet<BodyId> = if show_preview {
@@ -1012,92 +1270,23 @@ pub fn sync_bodies(
         std::collections::HashSet::new()
     };
 
-    // Update existing entities (position, rotation, mesh, and dynamic goal material).
+    // Update existing entities (position, rotation, mesh, and dynamic material).
     for (entity, link, mut transform, mut mesh_handle, mut mat_handle) in &mut query {
         if let Some(body) = world.body(link.0) {
             transform.translation = sim_to_bevy(body.anchor);
             transform.rotation = cube_rot_to_quat(&body.orientation);
             transform.scale = Vec3::ONE;
 
-            // Update dynamic materials and chiral meshes based on orientation/fixed/moveable state
-            let is_moveable = body.is_pushable();
-            match body.kind {
-                BlockKind::Floor => {
-                    mesh_handle.0 = assets.cube_mesh.clone();
-                    mat_handle.0 = assets.floor_mat.clone();
-                }
-                BlockKind::Glass => {
-                    mesh_handle.0 = if is_moveable { assets.rounded_cube_mesh.clone() } else { assets.cube_mesh.clone() };
-                    mat_handle.0 = if is_moveable { assets.moveable_glass_mat.clone() } else { assets.fixed_glass_mat.clone() };
-                }
-                BlockKind::Goal => {
-                    let is_hit = hit_body_ids.contains(&body.id);
-                    mat_handle.0 = if is_hit {
-                        assets.goal_won_mat.clone()
-                    } else if is_moveable {
-                        assets.moveable_goal_mat.clone()
-                    } else {
-                        assets.goal_mat.clone()
-                    };
-                    mesh_handle.0 = if is_moveable { assets.rounded_pyramid_mesh.clone() } else { assets.pyramid_mesh.clone() };
-                }
-                BlockKind::Player => {
-                    mat_handle.0 = if show_preview && body.is_burnt() {
-                        assets.player_burnt_mat.clone()
-                    } else {
-                        assets.player_mat.clone()
-                    };
-                    mesh_handle.0 = assets.player_mesh.clone();
-                }
-                BlockKind::Wall => {
-                    mat_handle.0 = assets.fixed_wall_mat.clone();
-                    mesh_handle.0 = assets.cube_mesh.clone();
-                }
-                BlockKind::Pushable => {
-                    mat_handle.0 = if is_moveable {
-                        assets.moveable_pushable_mat.clone()
-                    } else {
-                        assets.fixed_pushable_mat.clone()
-                    };
-                    mesh_handle.0 = if is_moveable {
-                        assets.rounded_cube_mesh.clone()
-                    } else {
-                        assets.cube_mesh.clone()
-                    };
-                }
-                BlockKind::Mirror => {
-                    mesh_handle.0 = if is_moveable {
-                        if body.orientation.is_reflection() {
-                            assets.rounded_mirror_mesh_chiral.clone()
-                        } else {
-                            assets.rounded_mirror_mesh.clone()
-                        }
-                    } else {
-                        if body.orientation.is_reflection() {
-                            assets.mirror_mesh_chiral.clone()
-                        } else {
-                            assets.mirror_mesh.clone()
-                        }
-                    };
-                    mat_handle.0 = if is_moveable {
-                        assets.moveable_mirror_mat.clone()
-                    } else {
-                        assets.fixed_mirror_mat.clone()
-                    };
-                }
-                BlockKind::LaserSource => {
-                    mat_handle.0 = if is_moveable {
-                        assets.moveable_laser_mat.clone()
-                    } else {
-                        assets.fixed_laser_mat.clone()
-                    };
-                    mesh_handle.0 = if is_moveable {
-                        assets.rounded_cube_mesh.clone()
-                    } else {
-                        assets.cube_mesh.clone()
-                    };
-                }
-            }
+            let ctx = VisualMappingContext {
+                is_editor: is_editor_mode,
+                show_preview,
+                active_z,
+                is_goal_hit: hit_body_ids.contains(&body.id),
+            };
+
+            let visual_spec = BlockVisualSpec::from_body(body, &ctx);
+            mesh_handle.0 = assets.resolve_mesh(&visual_spec.mesh);
+            mat_handle.0 = assets.resolve_material(&visual_spec.material);
 
             seen.insert(link.0);
         } else {
@@ -1116,86 +1305,16 @@ pub fn sync_bodies(
             continue;
         }
 
-        let is_moveable = body.is_pushable();
-
-        let (mesh, material) = match body.kind {
-            BlockKind::Floor => {
-                (assets.cube_mesh.clone(), assets.floor_mat.clone())
-            }
-            BlockKind::Glass => {
-                let mesh = if is_moveable { assets.rounded_cube_mesh.clone() } else { assets.cube_mesh.clone() };
-                let mat = if is_moveable { assets.moveable_glass_mat.clone() } else { assets.fixed_glass_mat.clone() };
-                (mesh, mat)
-            }
-            BlockKind::Player => {
-                let mat = if show_preview && body.is_burnt() {
-                    assets.player_burnt_mat.clone()
-                } else {
-                    assets.player_mat.clone()
-                };
-                (assets.player_mesh.clone(), mat)
-            }
-            BlockKind::Goal => {
-                let is_hit = hit_body_ids.contains(&body.id);
-                let mat = if is_hit {
-                    assets.goal_won_mat.clone()
-                } else if is_moveable {
-                    assets.moveable_goal_mat.clone()
-                } else {
-                    assets.goal_mat.clone()
-                };
-                let mesh = if is_moveable { assets.rounded_pyramid_mesh.clone() } else { assets.pyramid_mesh.clone() };
-                (mesh, mat)
-            }
-            BlockKind::Wall => (assets.cube_mesh.clone(), assets.fixed_wall_mat.clone()),
-            BlockKind::Pushable => {
-                let mat = if is_moveable {
-                    assets.moveable_pushable_mat.clone()
-                } else {
-                    assets.fixed_pushable_mat.clone()
-                };
-                let mesh = if is_moveable {
-                    assets.rounded_cube_mesh.clone()
-                } else {
-                    assets.cube_mesh.clone()
-                };
-                (mesh, mat)
-            }
-            BlockKind::Mirror => {
-                let m = if is_moveable {
-                    if body.orientation.is_reflection() {
-                        assets.rounded_mirror_mesh_chiral.clone()
-                    } else {
-                        assets.rounded_mirror_mesh.clone()
-                    }
-                } else {
-                    if body.orientation.is_reflection() {
-                        assets.mirror_mesh_chiral.clone()
-                    } else {
-                        assets.mirror_mesh.clone()
-                    }
-                };
-                let mat = if is_moveable {
-                    assets.moveable_mirror_mat.clone()
-                } else {
-                    assets.fixed_mirror_mat.clone()
-                };
-                (m, mat)
-            }
-            BlockKind::LaserSource => {
-                let mat = if is_moveable {
-                    assets.moveable_laser_mat.clone()
-                } else {
-                    assets.fixed_laser_mat.clone()
-                };
-                let mesh = if is_moveable {
-                    assets.rounded_cube_mesh.clone()
-                } else {
-                    assets.cube_mesh.clone()
-                };
-                (mesh, mat)
-            }
+        let ctx = VisualMappingContext {
+            is_editor: is_editor_mode,
+            show_preview,
+            active_z,
+            is_goal_hit: hit_body_ids.contains(&body.id),
         };
+
+        let visual_spec = BlockVisualSpec::from_body(body, &ctx);
+        let mesh = assets.resolve_mesh(&visual_spec.mesh);
+        let material = assets.resolve_material(&visual_spec.material);
 
         let transform = Transform::from_translation(sim_to_bevy(body.anchor))
             .with_rotation(cube_rot_to_quat(&body.orientation));
@@ -1581,5 +1700,82 @@ pub fn draw_combined_group_gizmos(
                 gizmos.line(positions[i], positions[j], color);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sim::Body;
+    use glam::IVec3;
+
+    #[test]
+    fn test_visual_spec_moveable_vs_fixed() {
+        let b_moveable = Body::new(crate::sim::BodyId(1), BlockKind::Pushable, IVec3::ZERO, vec![IVec3::ZERO]);
+        let mut b_fixed = Body::new(crate::sim::BodyId(2), BlockKind::Pushable, IVec3::ZERO, vec![IVec3::ZERO]);
+        b_fixed.tags.set(crate::sim::TagKind::Fixed, crate::sim::TagValue::Unit);
+
+        let ctx = VisualMappingContext {
+            is_editor: false,
+            show_preview: true,
+            active_z: None,
+            is_goal_hit: false,
+        };
+
+        let spec_moveable = BlockVisualSpec::from_body(&b_moveable, &ctx);
+        let spec_fixed = BlockVisualSpec::from_body(&b_fixed, &ctx);
+
+        assert_eq!(spec_moveable.mesh, MeshSpec::Cube { chamfered: true });
+        assert_eq!(spec_moveable.material.surface_pattern, SurfacePattern::Solid);
+
+        assert_eq!(spec_fixed.mesh, MeshSpec::Cube { chamfered: false });
+        assert_eq!(spec_fixed.material.surface_pattern, SurfacePattern::PolkaDotDarkened);
+    }
+
+    #[test]
+    fn test_visual_spec_layer_opacity() {
+        let b_above = Body::new(crate::sim::BodyId(1), BlockKind::Wall, IVec3::new(0, 0, 3), vec![IVec3::ZERO]);
+        let b_active = Body::new(crate::sim::BodyId(2), BlockKind::Wall, IVec3::new(0, 0, 1), vec![IVec3::ZERO]);
+        let b_below = Body::new(crate::sim::BodyId(3), BlockKind::Wall, IVec3::new(0, 0, 0), vec![IVec3::ZERO]);
+
+        let ctx = VisualMappingContext {
+            is_editor: true,
+            show_preview: true,
+            active_z: Some(1), // Working on layer 1
+            is_goal_hit: false,
+        };
+
+        let spec_above = BlockVisualSpec::from_body(&b_above, &ctx);
+        let spec_active = BlockVisualSpec::from_body(&b_active, &ctx);
+        let spec_below = BlockVisualSpec::from_body(&b_below, &ctx);
+
+        assert_eq!(spec_above.material.opacity, OpacityLayer::GhostAboveLayer);
+        assert_eq!(spec_active.material.opacity, OpacityLayer::Opaque);
+        assert_eq!(spec_below.material.opacity, OpacityLayer::FadeBelowLayer);
+    }
+
+    #[test]
+    fn test_visual_spec_emissive_effects() {
+        let mut player = Body::new(crate::sim::BodyId(1), BlockKind::Player, IVec3::ZERO, vec![IVec3::ZERO]);
+        player.tags.set(crate::sim::TagKind::Burnt, crate::sim::TagValue::Unit);
+
+        let ctx_preview_on = VisualMappingContext {
+            is_editor: true,
+            show_preview: true,
+            active_z: None,
+            is_goal_hit: false,
+        };
+        let ctx_preview_off = VisualMappingContext {
+            is_editor: true,
+            show_preview: false,
+            active_z: None,
+            is_goal_hit: false,
+        };
+
+        let spec_on = BlockVisualSpec::from_body(&player, &ctx_preview_on);
+        let spec_off = BlockVisualSpec::from_body(&player, &ctx_preview_off);
+
+        assert_eq!(spec_on.material.emissive_effect, EmissiveEffect::CharredEmbers);
+        assert_eq!(spec_off.material.emissive_effect, EmissiveEffect::None);
     }
 }
