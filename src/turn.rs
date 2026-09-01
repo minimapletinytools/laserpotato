@@ -143,6 +143,8 @@ pub struct TurnEngine {
     pub outcome: GameOutcome,
     /// Stack of previous world snapshots for undo.
     undo_stack: Vec<World>,
+    /// Sequential history of player actions applied during the current play session.
+    pub action_history: Vec<PlayerAction>,
     /// The world as it was at frame 0 (for reset).
     initial_world: World,
     /// The raw authoring world at frame 0* (before frame 1 simulation).
@@ -210,6 +212,7 @@ impl TurnEngine {
             laser_state,
             outcome,
             undo_stack: Vec::new(),
+            action_history: Vec::new(),
             initial_world,
             frame_zero_star,
             validation_error,
@@ -256,6 +259,7 @@ impl TurnEngine {
         self.laser_state = laser_state;
         self.outcome = outcome;
         self.undo_stack.clear();
+        self.action_history.clear();
         self.validation_error = None;
         Ok(())
     }
@@ -268,6 +272,7 @@ impl TurnEngine {
         self.outcome = outcome;
         self.initial_world = frame1_world;
         self.undo_stack.clear();
+        self.action_history.clear();
         self.validation_error = validation_error;
     }
 
@@ -284,14 +289,24 @@ impl TurnEngine {
     /// Apply a player action to the world.
     pub fn apply(&mut self, action: PlayerAction) -> TurnResult {
         match action {
-            PlayerAction::Undo => self.undo(),
-            PlayerAction::Reset => self.reset(),
+            PlayerAction::Undo => {
+                self.action_history.pop();
+                self.undo()
+            }
+            PlayerAction::Reset => {
+                self.action_history.clear();
+                self.reset()
+            }
             _ => {
                 // When in a Win or Loss state, no further gameplay moves are accepted.
                 if self.outcome.is_game_over() {
                     return TurnResult::GameOver;
                 }
-                self.resolve_turn(action)
+                let res = self.resolve_turn(action);
+                if res == TurnResult::Ok {
+                    self.action_history.push(action);
+                }
+                res
             }
         }
     }
@@ -440,6 +455,27 @@ impl TurnEngine {
             self.world.sync_grid();
         }
     }
+}
+
+/// Validates whether a sequence of player actions successfully solves the given level from its starting state.
+pub fn validate_solution(world: &World, actions: &[PlayerAction]) -> bool {
+    let mut engine = TurnEngine::new(world.clone());
+    if !engine.is_valid() {
+        return false;
+    }
+    if engine.start_playtest().is_err() {
+        return false;
+    }
+    for &action in actions {
+        if engine.is_won() {
+            return true;
+        }
+        let res = engine.apply(action);
+        if res == TurnResult::GameOver || engine.is_lost() {
+            return false;
+        }
+    }
+    engine.is_won()
 }
 
 /// Updates `TagKind::Burnt` on bodies in `world` based on laser hits.
@@ -891,5 +927,30 @@ mod tests {
         // Both goals hit -> Won!
         assert_eq!(engine2.outcome, GameOutcome::Won);
         assert!(engine2.is_won());
+    }
+
+    #[test]
+    fn validate_solution_test() {
+        let mut world = World::new();
+        // Laser at (2, 0, 0) shooting +Y
+        world.spawn(BlockKind::LaserSource, IVec3::new(2, 0, 0), vec![IVec3::ZERO]);
+        // Pushable mirror at (2, 3, 0) - not in laser path yet
+        world.spawn(BlockKind::Mirror, IVec3::new(1, 2, 0), vec![IVec3::ZERO]);
+        // Goal at (5, 2, 0)
+        let gid = world.spawn(BlockKind::Goal, IVec3::new(5, 2, 0), vec![IVec3::ZERO]);
+        world.body_mut(gid).unwrap().tags.set(crate::sim::TagKind::Fixed, crate::sim::TagValue::Unit);
+        // Player at (0, 2, 0) facing East (+X)
+        let pid = world.spawn(BlockKind::Player, IVec3::new(0, 2, 0), vec![IVec3::ZERO]);
+        world.body_mut(pid).unwrap().orientation = CubeRot::from_facing_2d(IVec3::X);
+
+        // Not won at start
+        assert!(!validate_solution(&world, &[]));
+
+        // Player stepping Forward pushes mirror from (1, 2, 0) into laser beam at (2, 2, 0)
+        // Mirror reflects beam (+Y -> +X) into Goal at (5, 2, 0) -> Won!
+        assert!(validate_solution(&world, &[PlayerAction::Forward]));
+
+        // Invalid move: turning left does not push mirror into beam
+        assert!(!validate_solution(&world, &[PlayerAction::TurnLeft]));
     }
 }

@@ -1,5 +1,5 @@
 {
-  "name": "Default Puzzle",
+  "name": "Custom Level",
   "bodies": [
     {
       "kind": "Floor",
@@ -2991,49 +2991,20 @@
     {
       "kind": "Mirror",
       "anchor": [
-        6,
-        6,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            -1,
-            0,
-            0
-          ],
-          [
-            0,
-            -1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Mirror",
-      "anchor": [
         4,
-        8,
+        7,
         0
       ],
       "orientation": {
         "mat": [
           [
-            1,
+            -1,
             0,
             0
           ],
           [
             0,
-            1,
+            -1,
             0
           ],
           [
@@ -3051,93 +3022,6 @@
       "anchor": [
         8,
         8,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        1,
-        7,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        5,
-        7,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        7,
-        7,
         0
       ],
       "orientation": {
@@ -4322,6 +4206,5 @@
       "fixed": true,
       "combined_group": null
     }
-  ],
-  "solutions": []
+  ]
 }

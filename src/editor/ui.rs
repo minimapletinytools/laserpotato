@@ -134,6 +134,87 @@ pub struct FloorplanLockToggleText;
 #[derive(Component)]
 pub struct FloorplanCloseBtn;
 
+#[derive(Component)]
+pub struct SaveAsModal;
+
+#[derive(Component)]
+pub struct SaveAsFilenameText;
+
+#[derive(Component)]
+pub struct SaveAsConfirmBtn;
+
+#[derive(Component)]
+pub struct SaveAsCancelBtn;
+
+#[derive(Component)]
+pub struct UnsavedConfirmModal;
+
+#[derive(Component)]
+pub struct UnsavedConfirmDescText;
+
+#[derive(Component)]
+pub struct DiscardConfirmBtn;
+
+#[derive(Component)]
+pub struct DiscardConfirmBtnText;
+
+#[derive(Component)]
+pub struct DiscardCancelBtn;
+
+#[derive(Component)]
+pub struct FilePickerModal;
+
+#[derive(Component)]
+pub struct FilePickerCurrentDirText;
+
+#[derive(Component)]
+pub struct FilePickerListContainer;
+
+#[derive(Component)]
+pub struct FilePickerCancelBtn;
+
+#[derive(Component)]
+pub struct FilePickerUpBtn(pub String);
+
+#[derive(Component)]
+pub struct FilePickerDirBtn(pub String);
+
+#[derive(Component)]
+pub struct FilePickerFileBtn(pub String);
+
+#[derive(Component)]
+pub struct FilePickerItem;
+
+#[derive(Component)]
+pub struct SolutionPickerModal;
+
+#[derive(Component)]
+pub struct SolutionPickerListContainer;
+
+#[derive(Component)]
+pub struct SolutionPickerItem;
+
+#[derive(Component)]
+pub struct SolutionPlayBtn(pub usize);
+
+#[derive(Component)]
+pub struct SolutionDeleteBtn(pub usize);
+
+#[derive(Component)]
+pub struct SolutionPickerCancelBtn;
+
+#[derive(Component)]
+pub struct SolutionSpeedLabel;
+
+#[derive(Component)]
+pub struct SolutionSpeedDecBtn;
+
+#[derive(Component)]
+pub struct SolutionSpeedIncBtn;
+
+#[derive(Component)]
+pub struct SolutionSpeedPresetBtn(pub f32);
+
 // ---------------------------------------------------------------------------
 // Colors & Styling Constants
 // ---------------------------------------------------------------------------
@@ -196,7 +277,7 @@ pub fn setup_editor_ui(mut commands: Commands) {
                         spawn_action_btn(group, EditorAction::NewLevel, "New");
                         spawn_action_btn(group, EditorAction::Save, "Save");
                         spawn_action_btn(group, EditorAction::SaveAs, "Save As");
-                        spawn_action_btn(group, EditorAction::ToggleLevelsMenu, "[Levels]");
+                        spawn_action_btn(group, EditorAction::OpenLevel, "Open");
                         spawn_action_btn(group, EditorAction::ToggleFloorplanModal, "Floorplan");
                         spawn_action_btn(group, EditorAction::ToggleFramePreview, "Preview: 1");
                     });
@@ -492,6 +573,431 @@ pub fn setup_editor_ui(mut commands: Commands) {
                     ))
                     .with_children(|b| {
                         b.spawn((Text::new("Close"), TextFont::from_font_size(11.0), TextColor(TEXT_MUTED)));
+                    });
+            });
+
+            // ===============================================================
+            // FLOATING SAVE AS MODAL
+            // ===============================================================
+            root.spawn((
+                SaveAsModal,
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Percent(35.0),
+                    top: Val::Percent(28.0),
+                    width: Val::Px(340.0),
+                    flex_direction: FlexDirection::Column,
+                    padding: UiRect::all(Val::Px(14.0)),
+                    row_gap: Val::Px(10.0),
+                    border: UiRect::all(Val::Px(1.0)),
+                    ..default()
+                },
+                BorderColor::all(Color::srgba(0.4, 0.6, 0.9, 0.8)),
+                BackgroundColor(Color::srgba(0.06, 0.07, 0.10, 0.98)),
+            ))
+            .with_children(|modal| {
+                modal.spawn((
+                    Text::new("SAVE LEVEL AS"),
+                    TextFont::from_font_size(14.0),
+                    TextColor(Color::srgb(0.9, 0.8, 0.3)),
+                ));
+
+                modal.spawn((
+                    Text::new("Enter filename (.json):"),
+                    TextFont::from_font_size(11.0),
+                    TextColor(TEXT_MUTED),
+                ));
+
+                // Filename input display box
+                modal
+                    .spawn((
+                        Node {
+                            width: Val::Percent(100.0),
+                            padding: UiRect::axes(Val::Px(8.0), Val::Px(6.0)),
+                            border: UiRect::all(Val::Px(1.0)),
+                            ..default()
+                        },
+                        BorderColor::all(Color::srgba(0.3, 0.5, 0.8, 0.6)),
+                        BackgroundColor(Color::srgba(0.12, 0.14, 0.18, 1.0)),
+                    ))
+                    .with_children(|box_node| {
+                        box_node.spawn((
+                            SaveAsFilenameText,
+                            Text::new("puzzle_custom.json"),
+                            TextFont::from_font_size(13.0),
+                            TextColor(Color::srgb(0.3, 0.85, 1.0)),
+                        ));
+                    });
+
+                // Buttons row: [Cancel] [Save]
+                modal
+                    .spawn(Node {
+                        width: Val::Percent(100.0),
+                        justify_content: JustifyContent::FlexEnd,
+                        column_gap: Val::Px(8.0),
+                        ..default()
+                    })
+                    .with_children(|row| {
+                        row.spawn((
+                            SaveAsCancelBtn,
+                            Button,
+                            Node {
+                                padding: UiRect::axes(Val::Px(12.0), Val::Px(6.0)),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                ..default()
+                            },
+                            BackgroundColor(BTN_NORMAL),
+                        ))
+                        .with_children(|b| {
+                            b.spawn((Text::new("Cancel [Esc]"), TextFont::from_font_size(12.0), TextColor(TEXT_MUTED)));
+                        });
+
+                        row.spawn((
+                            SaveAsConfirmBtn,
+                            Button,
+                            Node {
+                                padding: UiRect::axes(Val::Px(14.0), Val::Px(6.0)),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                ..default()
+                            },
+                            BackgroundColor(BTN_SUCCESS),
+                        ))
+                        .with_children(|b| {
+                            b.spawn((Text::new("Save [Enter]"), TextFont::from_font_size(12.0), TextColor(Color::WHITE)));
+                        });
+                    });
+            });
+
+            // ===============================================================
+            // FLOATING UNSAVED CHANGES CONFIRM MODAL
+            // ===============================================================
+            root.spawn((
+                UnsavedConfirmModal,
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Percent(35.0),
+                    top: Val::Percent(28.0),
+                    width: Val::Px(350.0),
+                    flex_direction: FlexDirection::Column,
+                    padding: UiRect::all(Val::Px(14.0)),
+                    row_gap: Val::Px(10.0),
+                    border: UiRect::all(Val::Px(1.0)),
+                    ..default()
+                },
+                BorderColor::all(Color::srgba(0.9, 0.3, 0.3, 0.8)),
+                BackgroundColor(Color::srgba(0.08, 0.07, 0.09, 0.98)),
+            ))
+            .with_children(|modal| {
+                modal.spawn((
+                    Text::new("DISCARD UNSAVED CHANGES?"),
+                    TextFont::from_font_size(14.0),
+                    TextColor(Color::srgb(1.0, 0.4, 0.3)),
+                ));
+
+                modal.spawn((
+                    UnsavedConfirmDescText,
+                    Text::new("You have unsaved changes in the current level.\nAre you sure you want to discard changes and create a new level?"),
+                    TextFont::from_font_size(12.0),
+                    TextColor(TEXT_PRIMARY),
+                ));
+
+                // Buttons row: [Cancel] [Discard & Confirm]
+                modal
+                    .spawn(Node {
+                        width: Val::Percent(100.0),
+                        justify_content: JustifyContent::FlexEnd,
+                        column_gap: Val::Px(8.0),
+                        ..default()
+                    })
+                    .with_children(|row| {
+                        row.spawn((
+                            DiscardCancelBtn,
+                            Button,
+                            Node {
+                                padding: UiRect::axes(Val::Px(12.0), Val::Px(6.0)),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                ..default()
+                            },
+                            BackgroundColor(BTN_NORMAL),
+                        ))
+                        .with_children(|b| {
+                            b.spawn((Text::new("Cancel [Esc]"), TextFont::from_font_size(12.0), TextColor(TEXT_MUTED)));
+                        });
+
+                        row.spawn((
+                            DiscardConfirmBtn,
+                            Button,
+                            Node {
+                                padding: UiRect::axes(Val::Px(12.0), Val::Px(6.0)),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                ..default()
+                            },
+                            BackgroundColor(Color::srgba(0.85, 0.2, 0.2, 0.9)),
+                        ))
+                        .with_children(|b| {
+                            b.spawn((DiscardConfirmBtnText, Text::new("Discard & New"), TextFont::from_font_size(12.0), TextColor(Color::WHITE)));
+                        });
+                    });
+            });
+
+            // ===============================================================
+            // FLOATING FILE PICKER MODAL
+            // ===============================================================
+            root.spawn((
+                FilePickerModal,
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Percent(30.0),
+                    top: Val::Percent(16.0),
+                    width: Val::Px(480.0),
+                    max_height: Val::Px(540.0),
+                    flex_direction: FlexDirection::Column,
+                    padding: UiRect::all(Val::Px(14.0)),
+                    row_gap: Val::Px(10.0),
+                    border: UiRect::all(Val::Px(1.0)),
+                    ..default()
+                },
+                BorderColor::all(Color::srgba(0.35, 0.55, 0.85, 0.8)),
+                BackgroundColor(Color::srgba(0.06, 0.07, 0.10, 0.98)),
+            ))
+            .with_children(|modal| {
+                modal.spawn((
+                    Text::new("OPEN LEVEL FILE"),
+                    TextFont::from_font_size(14.0),
+                    TextColor(Color::srgb(0.9, 0.8, 0.3)),
+                ));
+
+                // Current Directory row
+                modal
+                    .spawn((
+                        Node {
+                            width: Val::Percent(100.0),
+                            padding: UiRect::axes(Val::Px(8.0), Val::Px(5.0)),
+                            border: UiRect::all(Val::Px(1.0)),
+                            ..default()
+                        },
+                        BorderColor::all(Color::srgba(0.3, 0.45, 0.7, 0.6)),
+                        BackgroundColor(Color::srgba(0.10, 0.12, 0.16, 1.0)),
+                    ))
+                    .with_children(|box_node| {
+                        box_node.spawn((
+                            FilePickerCurrentDirText,
+                            Text::new("Directory: levels/"),
+                            TextFont::from_font_size(12.0),
+                            TextColor(Color::srgb(0.4, 0.8, 1.0)),
+                        ));
+                    });
+
+                // Scrollable/Vertical List Container for files and directories
+                modal.spawn((
+                    FilePickerListContainer,
+                    Node {
+                        width: Val::Percent(100.0),
+                        max_height: Val::Px(320.0),
+                        min_height: Val::Px(120.0),
+                        flex_direction: FlexDirection::Column,
+                        row_gap: Val::Px(4.0),
+                        overflow: Overflow::clip_y(),
+                        padding: UiRect::all(Val::Px(4.0)),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgba(0.04, 0.05, 0.07, 0.8)),
+                ));
+
+                // Bottom Buttons row: [Cancel [Esc]]
+                modal
+                    .spawn(Node {
+                        width: Val::Percent(100.0),
+                        justify_content: JustifyContent::FlexEnd,
+                        column_gap: Val::Px(8.0),
+                        ..default()
+                    })
+                    .with_children(|row| {
+                        row.spawn((
+                            FilePickerCancelBtn,
+                            Button,
+                            Node {
+                                padding: UiRect::axes(Val::Px(14.0), Val::Px(6.0)),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                ..default()
+                            },
+                            BackgroundColor(BTN_NORMAL),
+                        ))
+                        .with_children(|b| {
+                            b.spawn((Text::new("Cancel [Esc]"), TextFont::from_font_size(12.0), TextColor(TEXT_MUTED)));
+                        });
+                    });
+            });
+
+            // ===============================================================
+            // FLOATING SOLUTION PICKER MODAL
+            // ===============================================================
+            root.spawn((
+                SolutionPickerModal,
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Percent(30.0),
+                    top: Val::Percent(18.0),
+                    width: Val::Px(480.0),
+                    max_height: Val::Px(500.0),
+                    flex_direction: FlexDirection::Column,
+                    padding: UiRect::all(Val::Px(14.0)),
+                    row_gap: Val::Px(10.0),
+                    border: UiRect::all(Val::Px(1.0)),
+                    ..default()
+                },
+                BorderColor::all(Color::srgba(0.3, 0.7, 0.45, 0.8)),
+                BackgroundColor(Color::srgba(0.06, 0.08, 0.07, 0.98)),
+            ))
+            .with_children(|modal| {
+                modal.spawn((
+                    Text::new("CHOOSE SOLUTION TO TEST"),
+                    TextFont::from_font_size(14.0),
+                    TextColor(Color::srgb(0.3, 1.0, 0.6)),
+                ));
+
+                modal.spawn((
+                    Text::new("Select a recorded solution for the current level:"),
+                    TextFont::from_font_size(12.0),
+                    TextColor(TEXT_PRIMARY),
+                ));
+
+                // Speed Slider / Stepper Control Row
+                modal.spawn((
+                    Node {
+                        width: Val::Percent(100.0),
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::SpaceBetween,
+                        padding: UiRect::axes(Val::Px(8.0), Val::Px(6.0)),
+                        border: UiRect::all(Val::Px(1.0)),
+                        ..default()
+                    },
+                    BorderColor::all(Color::srgba(0.2, 0.45, 0.3, 0.7)),
+                    BackgroundColor(Color::srgba(0.04, 0.07, 0.05, 0.9)),
+                ))
+                .with_children(|speed_row| {
+                    speed_row.spawn((
+                        Text::new("Play Speed:"),
+                        TextFont::from_font_size(12.0),
+                        TextColor(Color::srgb(0.5, 0.9, 0.7)),
+                    ));
+
+                    speed_row.spawn(Node {
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(5.0),
+                        ..default()
+                    })
+                    .with_children(|btns| {
+                        // [-] Step slower button
+                        btns.spawn((
+                            SolutionSpeedDecBtn,
+                            Button,
+                            Node {
+                                padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)),
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                ..default()
+                            },
+                            BackgroundColor(BTN_NORMAL),
+                        ))
+                        .with_children(|b| {
+                            b.spawn((Text::new("[-]"), TextFont::from_font_size(12.0), TextColor(TEXT_PRIMARY)));
+                        });
+
+                        // Speed display text
+                        btns.spawn((
+                            SolutionSpeedLabel,
+                            Text::new("1.0x (400ms)"),
+                            TextFont::from_font_size(12.0),
+                            TextColor(Color::srgb(0.95, 0.95, 1.0)),
+                        ));
+
+                        // [+] Step faster button
+                        btns.spawn((
+                            SolutionSpeedIncBtn,
+                            Button,
+                            Node {
+                                padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)),
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                ..default()
+                            },
+                            BackgroundColor(BTN_NORMAL),
+                        ))
+                        .with_children(|b| {
+                            b.spawn((Text::new("[+]"), TextFont::from_font_size(12.0), TextColor(TEXT_PRIMARY)));
+                        });
+
+                        // Preset buttons: 0.5x, 1x, 2x, 4x
+                        for &preset in &[0.5f32, 1.0, 2.0, 4.0] {
+                            btns.spawn((
+                                SolutionSpeedPresetBtn(preset),
+                                Button,
+                                Node {
+                                    padding: UiRect::axes(Val::Px(6.0), Val::Px(3.0)),
+                                    align_items: AlignItems::Center,
+                                    justify_content: JustifyContent::Center,
+                                    ..default()
+                                },
+                                BackgroundColor(if (preset - 1.0).abs() < 0.01 { BTN_ACTIVE } else { Color::srgba(0.12, 0.18, 0.22, 0.8) }),
+                            ))
+                            .with_children(|b| {
+                                b.spawn((
+                                    Text::new(format!("{}x", preset)),
+                                    TextFont::from_font_size(11.0),
+                                    TextColor(if (preset - 1.0).abs() < 0.01 { TEXT_PRIMARY } else { TEXT_MUTED }),
+                                ));
+                            });
+                        }
+                    });
+                });
+
+                // Scrollable Container for solution items
+                modal.spawn((
+                    SolutionPickerListContainer,
+                    Node {
+                        width: Val::Percent(100.0),
+                        max_height: Val::Px(300.0),
+                        min_height: Val::Px(100.0),
+                        flex_direction: FlexDirection::Column,
+                        row_gap: Val::Px(4.0),
+                        overflow: Overflow::clip_y(),
+                        padding: UiRect::all(Val::Px(4.0)),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgba(0.03, 0.05, 0.04, 0.8)),
+                ));
+
+                // Bottom Buttons row: [Cancel [Esc]]
+                modal
+                    .spawn(Node {
+                        width: Val::Percent(100.0),
+                        justify_content: JustifyContent::FlexEnd,
+                        column_gap: Val::Px(8.0),
+                        ..default()
+                    })
+                    .with_children(|row| {
+                        row.spawn((
+                            SolutionPickerCancelBtn,
+                            Button,
+                            Node {
+                                padding: UiRect::axes(Val::Px(14.0), Val::Px(6.0)),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                ..default()
+                            },
+                            BackgroundColor(BTN_NORMAL),
+                        ))
+                        .with_children(|b| {
+                            b.spawn((Text::new("Cancel [Esc]"), TextFont::from_font_size(12.0), TextColor(TEXT_MUTED)));
+                        });
                     });
             });
 
@@ -1393,12 +1899,23 @@ pub fn update_editor_status_and_modal_ui_system(
         Option<&FloorplanZLabel>,
         Option<&FloorplanLockToggleText>,
         Option<&ActionButtonText>,
+        Option<&SaveAsFilenameText>,
+        Option<&UnsavedConfirmDescText>,
+        Option<&DiscardConfirmBtnText>,
     )>,
     mut action_btns_query: Query<(&ActionButton, &mut BackgroundColor)>,
-    mut modal_query: Query<&mut Visibility, (With<FloorplanModal>, Without<EditorRootUi>, Without<ValidationErrorBanner>)>,
-    mut banner_query: Query<&mut Visibility, (With<ValidationErrorBanner>, Without<EditorRootUi>, Without<FloorplanModal>)>,
+    mut modal_query: Query<&mut Visibility, (With<FloorplanModal>, Without<SaveAsModal>, Without<UnsavedConfirmModal>, Without<FilePickerModal>, Without<SolutionPickerModal>, Without<EditorRootUi>, Without<ValidationErrorBanner>)>,
+    mut save_as_modal_query: Query<&mut Visibility, (With<SaveAsModal>, Without<FloorplanModal>, Without<UnsavedConfirmModal>, Without<FilePickerModal>, Without<SolutionPickerModal>, Without<EditorRootUi>, Without<ValidationErrorBanner>)>,
+    mut unsaved_modal_query: Query<&mut Visibility, (With<UnsavedConfirmModal>, Without<FloorplanModal>, Without<SaveAsModal>, Without<FilePickerModal>, Without<SolutionPickerModal>, Without<EditorRootUi>, Without<ValidationErrorBanner>)>,
+    mut banner_query: Query<&mut Visibility, (With<ValidationErrorBanner>, Without<EditorRootUi>, Without<FloorplanModal>, Without<SaveAsModal>, Without<UnsavedConfirmModal>, Without<FilePickerModal>, Without<SolutionPickerModal>)>,
+    mut solution_modal_query: Query<&mut Visibility, (With<SolutionPickerModal>, Without<FloorplanModal>, Without<SaveAsModal>, Without<UnsavedConfirmModal>, Without<FilePickerModal>, Without<EditorRootUi>, Without<ValidationErrorBanner>)>,
 ) {
     if *app_mode.get() != AppMode::Editor {
+        for mut vis in &mut modal_query { *vis = Visibility::Hidden; }
+        for mut vis in &mut save_as_modal_query { *vis = Visibility::Hidden; }
+        for mut vis in &mut unsaved_modal_query { *vis = Visibility::Hidden; }
+        for mut vis in &mut solution_modal_query { *vis = Visibility::Hidden; }
+        for mut vis in &mut banner_query { *vis = Visibility::Hidden; }
         return;
     }
 
@@ -1410,9 +1927,33 @@ pub fn update_editor_status_and_modal_ui_system(
         .map(|(h, _)| *h == current_hash)
         .unwrap_or(false);
 
-    // 1. Update Floorplan Modal visibility
+    // 1. Update Modal visibilities
     for mut vis in &mut modal_query {
         *vis = if editor.floorplan_open {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+    }
+
+    for mut vis in &mut save_as_modal_query {
+        *vis = if editor.save_as_open {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+    }
+
+    for mut vis in &mut unsaved_modal_query {
+        *vis = if editor.unsaved_confirm_open {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+    }
+
+    for mut vis in &mut solution_modal_query {
+        *vis = if editor.solution_picker_open {
             Visibility::Visible
         } else {
             Visibility::Hidden
@@ -1429,7 +1970,7 @@ pub fn update_editor_status_and_modal_ui_system(
     }
 
     // 3. Update Text elements
-    for (mut text, mut color_opt, solver_opt, toast_opt, banner_opt, fp_w_opt, fp_h_opt, fp_z_opt, fp_lock_opt, action_btn_text_opt) in &mut text_query {
+    for (mut text, mut color_opt, solver_opt, toast_opt, banner_opt, fp_w_opt, fp_h_opt, fp_z_opt, fp_lock_opt, action_btn_text_opt, save_as_opt, unsaved_desc_opt, discard_btn_text_opt) in &mut text_query {
         if solver_opt.is_some() {
             text.0 = format!("Solver: {}", editor.solver_status);
             if let Some(color) = &mut color_opt {
@@ -1448,11 +1989,11 @@ pub fn update_editor_status_and_modal_ui_system(
                 text.0 = msg.clone();
             } else {
                 text.0 = format!(
-                    "Level: {} | Hash: 0x{:08x} | Blocks: {} | Solution Ready: {}",
+                    "Level: {} | Hash: 0x{:08x} | Blocks: {} | Solutions: {}",
                     editor.current_level_path,
                     current_hash,
                     game.engine.world.bodies().len(),
-                    if cached_valid { "YES" } else { "NO" }
+                    editor.solutions.len()
                 );
             }
         } else if banner_opt.is_some() {
@@ -1472,6 +2013,18 @@ pub fn update_editor_status_and_modal_ui_system(
             } else {
                 format!("Lock Floor Layer (Z={})", editor.floorplan_z)
             };
+        } else if save_as_opt.is_some() {
+            text.0 = format!("{}_", editor.save_as_filename);
+        } else if unsaved_desc_opt.is_some() {
+            text.0 = match editor.unsaved_action {
+                crate::editor::UnsavedAction::NewLevel => "You have unsaved changes in the current level.\nAre you sure you want to discard changes and create a new level?".into(),
+                crate::editor::UnsavedAction::OpenLevel => "You have unsaved changes in the current level.\nAre you sure you want to discard changes and open another level?".into(),
+            };
+        } else if discard_btn_text_opt.is_some() {
+            text.0 = match editor.unsaved_action {
+                crate::editor::UnsavedAction::NewLevel => "Discard & New".into(),
+                crate::editor::UnsavedAction::OpenLevel => "Discard & Open".into(),
+            };
         } else if let Some(btn_action) = action_btn_text_opt {
             if btn_action.0 == EditorAction::ToggleFramePreview {
                 text.0 = if editor.show_frame1_preview {
@@ -1490,7 +2043,7 @@ pub fn update_editor_status_and_modal_ui_system(
                 bg.0 = if has_val_err { BTN_DISABLED } else { BTN_NORMAL };
             }
             EditorAction::TestWithSolution => {
-                bg.0 = if has_val_err || !cached_valid {
+                bg.0 = if has_val_err || (editor.solutions.is_empty() && !cached_valid) {
                     BTN_DISABLED
                 } else {
                     BTN_SUCCESS
@@ -1505,4 +2058,259 @@ pub fn update_editor_status_and_modal_ui_system(
             _ => {}
         }
     }
+}
+
+/// Dynamically updates the File Picker UI: visibility, current directory label, and directory contents.
+pub fn update_file_picker_ui_system(
+    mut commands: Commands,
+    app_mode: Res<State<AppMode>>,
+    mut editor: ResMut<EditorState>,
+    mut picker_modal_query: Query<&mut Visibility, With<FilePickerModal>>,
+    mut dir_text_query: Query<&mut Text, (With<FilePickerCurrentDirText>, Without<SolverStatusBadge>, Without<ToastNotificationText>)>,
+    container_query: Query<Entity, With<FilePickerListContainer>>,
+    item_query: Query<Entity, With<FilePickerItem>>,
+) {
+    if *app_mode.get() != AppMode::Editor {
+        for mut vis in &mut picker_modal_query {
+            *vis = Visibility::Hidden;
+        }
+        return;
+    }
+
+    for mut vis in &mut picker_modal_query {
+        *vis = if editor.file_picker_open {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+    }
+
+    if !editor.file_picker_open || !editor.file_picker_dirty {
+        return;
+    }
+
+    editor.file_picker_dirty = false;
+
+    for mut text in &mut dir_text_query {
+        text.0 = format!("Directory: {}/", editor.file_picker_dir);
+    }
+
+    let Some(container_entity) = container_query.iter().next() else {
+        return;
+    };
+
+    for item_entity in &item_query {
+        commands.entity(item_entity).despawn();
+    }
+
+    let (parent_opt, entries) = crate::level::list_directory_entries(&editor.file_picker_dir);
+
+    commands.entity(container_entity).with_children(|list| {
+        // 1. "Up" button if parent directory exists
+        if let Some(parent) = parent_opt {
+            list.spawn((
+                FilePickerItem,
+                FilePickerUpBtn(parent),
+                Button,
+                Node {
+                    width: Val::Percent(100.0),
+                    padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                    align_items: AlignItems::Center,
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.12, 0.18, 0.26, 0.9)),
+            ))
+            .with_children(|b| {
+                b.spawn((
+                    Text::new("[UP] .. [Parent Directory]"),
+                    TextFont::from_font_size(12.0),
+                    TextColor(Color::srgb(0.5, 0.8, 1.0)),
+                ));
+            });
+        }
+
+        if entries.is_empty() {
+            list.spawn((
+                FilePickerItem,
+                Text::new("(No subfolders or .json level files in this directory)"),
+                TextFont::from_font_size(11.0),
+                TextColor(TEXT_MUTED),
+            ));
+        }
+
+        // 2. Entries: Directories first, then Files
+        for entry in entries {
+            match entry.kind {
+                crate::level::FilePickerEntryKind::Directory => {
+                    list.spawn((
+                        FilePickerItem,
+                        FilePickerDirBtn(entry.path),
+                        Button,
+                        Node {
+                            width: Val::Percent(100.0),
+                            padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },
+                        BackgroundColor(Color::srgba(0.13, 0.16, 0.22, 0.9)),
+                    ))
+                    .with_children(|b| {
+                        b.spawn((
+                            Text::new(format!("[DIR] {}/", entry.name)),
+                            TextFont::from_font_size(12.0),
+                            TextColor(Color::srgb(0.4, 0.85, 1.0)),
+                        ));
+                    });
+                }
+                crate::level::FilePickerEntryKind::JsonLevelFile => {
+                    list.spawn((
+                        FilePickerItem,
+                        FilePickerFileBtn(entry.path),
+                        Button,
+                        Node {
+                            width: Val::Percent(100.0),
+                            padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },
+                        BackgroundColor(BTN_NORMAL),
+                    ))
+                    .with_children(|b| {
+                        b.spawn((
+                            Text::new(format!("[LVL] {}", entry.name)),
+                            TextFont::from_font_size(12.0),
+                            TextColor(TEXT_PRIMARY),
+                        ));
+                    });
+                }
+            }
+        }
+    });
+}
+
+/// Dynamically updates the Solution Picker UI: visibility and list of available solutions.
+pub fn update_solution_picker_ui_system(
+    mut commands: Commands,
+    app_mode: Res<State<AppMode>>,
+    mut editor: ResMut<EditorState>,
+    mut picker_modal_query: Query<&mut Visibility, With<SolutionPickerModal>>,
+    mut speed_label_query: Query<&mut Text, (With<SolutionSpeedLabel>, Without<SolverStatusBadge>, Without<ToastNotificationText>)>,
+    mut preset_btns_query: Query<(&SolutionSpeedPresetBtn, &mut BackgroundColor, &Children)>,
+    mut text_color_query: Query<&mut TextColor>,
+    container_query: Query<Entity, With<SolutionPickerListContainer>>,
+    item_query: Query<Entity, With<SolutionPickerItem>>,
+) {
+    if *app_mode.get() != AppMode::Editor {
+        for mut vis in &mut picker_modal_query {
+            *vis = Visibility::Hidden;
+        }
+        return;
+    }
+
+    for mut vis in &mut picker_modal_query {
+        *vis = if editor.solution_picker_open {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+    }
+
+    if !editor.solution_picker_open {
+        return;
+    }
+
+    // Update speed label and preset buttons styling
+    for mut text in &mut speed_label_query {
+        let ms = (400.0 / editor.playback_speed.max(0.1)).round() as u32;
+        text.0 = format!("{:.1}x ({}ms)", editor.playback_speed, ms);
+    }
+
+    for (preset_btn, mut bg, children) in &mut preset_btns_query {
+        let is_active = (preset_btn.0 - editor.playback_speed).abs() < 0.05;
+        bg.0 = if is_active { BTN_ACTIVE } else { Color::srgba(0.12, 0.18, 0.22, 0.8) };
+        for &child in children {
+            if let Ok(mut tc) = text_color_query.get_mut(child) {
+                tc.0 = if is_active { TEXT_PRIMARY } else { TEXT_MUTED };
+            }
+        }
+    }
+
+    if !editor.solution_picker_dirty {
+        return;
+    }
+
+    editor.solution_picker_dirty = false;
+
+    let Some(container_entity) = container_query.iter().next() else {
+        return;
+    };
+
+    for item_entity in &item_query {
+        commands.entity(item_entity).despawn();
+    }
+
+    commands.entity(container_entity).with_children(|list| {
+        if editor.solutions.is_empty() {
+            list.spawn((
+                SolutionPickerItem,
+                Text::new("(No valid recorded solutions for this level)"),
+                TextFont::from_font_size(12.0),
+                TextColor(TEXT_MUTED),
+            ));
+        } else {
+            for (idx, sol) in editor.solutions.iter().enumerate() {
+                list.spawn((
+                    SolutionPickerItem,
+                    Node {
+                        width: Val::Percent(100.0),
+                        justify_content: JustifyContent::SpaceBetween,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(6.0),
+                        ..default()
+                    },
+                ))
+                .with_children(|row| {
+                    // Play solution button
+                    row.spawn((
+                        SolutionPlayBtn(idx),
+                        Button,
+                        Node {
+                            flex_grow: 1.0,
+                            padding: UiRect::axes(Val::Px(10.0), Val::Px(6.0)),
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },
+                        BackgroundColor(Color::srgba(0.12, 0.22, 0.32, 0.9)),
+                    ))
+                    .with_children(|b| {
+                        b.spawn((
+                            Text::new(format!("[PLAY] #{}: {} ({} steps)", idx + 1, sol.name, sol.actions.len())),
+                            TextFont::from_font_size(12.0),
+                            TextColor(Color::srgb(0.4, 0.9, 0.7)),
+                        ));
+                    });
+
+                    // Delete solution button
+                    row.spawn((
+                        SolutionDeleteBtn(idx),
+                        Button,
+                        Node {
+                            padding: UiRect::axes(Val::Px(10.0), Val::Px(6.0)),
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            ..default()
+                        },
+                        BackgroundColor(Color::srgba(0.4, 0.15, 0.15, 0.9)),
+                    ))
+                    .with_children(|b| {
+                        b.spawn((
+                            Text::new("[X]"),
+                            TextFont::from_font_size(12.0),
+                            TextColor(Color::srgb(1.0, 0.4, 0.4)),
+                        ));
+                    });
+                });
+            }
+        }
+    });
 }

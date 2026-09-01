@@ -122,16 +122,27 @@ pub struct LevelBodyData {
     pub combined_group: Option<u32>,
 }
 
+pub use crate::turn::validate_solution;
+
+/// A named sequence of player actions representing a valid solution to a puzzle.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LevelSolution {
+    pub name: String,
+    pub actions: Vec<crate::turn::PlayerAction>,
+}
+
 /// Serializable puzzle level data.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LevelData {
     pub name: String,
     pub bodies: Vec<LevelBodyData>,
+    #[serde(default)]
+    pub solutions: Vec<LevelSolution>,
 }
 
 impl LevelData {
-    /// Convert an active [`World`] into a [`LevelData`] snapshot.
-    pub fn from_world(name: impl Into<String>, world: &World) -> Self {
+    /// Convert an active [`World`] into a [`LevelData`] snapshot with solutions.
+    pub fn from_world_with_solutions(name: impl Into<String>, world: &World, solutions: Vec<LevelSolution>) -> Self {
         let mut bodies = Vec::new();
         for body in world.bodies() {
             bodies.push(LevelBodyData {
@@ -145,7 +156,13 @@ impl LevelData {
         Self {
             name: name.into(),
             bodies,
+            solutions,
         }
+    }
+
+    /// Convert an active [`World`] into a [`LevelData`] snapshot.
+    pub fn from_world(name: impl Into<String>, world: &World) -> Self {
+        Self::from_world_with_solutions(name, world, Vec::new())
     }
 
     /// Reconstruct a playable [`World`] from this [`LevelData`].
@@ -241,6 +258,77 @@ pub fn list_level_files() -> Vec<String> {
     files
 }
 
+/// Kind of entry in the level file picker.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FilePickerEntryKind {
+    Directory,
+    JsonLevelFile,
+}
+
+/// An entry (directory or level file) displayed in the file picker dialog.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FilePickerEntry {
+    pub name: String,
+    pub path: String,
+    pub kind: FilePickerEntryKind,
+}
+
+/// List subdirectories and `.json` level files in `dir_path`, along with an optional parent path to go up.
+pub fn list_directory_entries(dir_path: &str) -> (Option<String>, Vec<FilePickerEntry>) {
+    let raw_path = if dir_path.is_empty() { "levels" } else { dir_path };
+    let path = Path::new(raw_path);
+
+    let parent_path = path.parent().and_then(|p| {
+        let s = p.to_string_lossy().to_string();
+        if s.is_empty() {
+            if raw_path != "." && raw_path != "levels" {
+                Some(".".to_string())
+            } else if raw_path == "levels" {
+                Some(".".to_string())
+            } else {
+                None
+            }
+        } else {
+            Some(s)
+        }
+    });
+
+    let mut entries = Vec::new();
+    if let Ok(read_dir) = std::fs::read_dir(path) {
+        for entry in read_dir.flatten() {
+            let p = entry.path();
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+            if name.starts_with('.') {
+                continue; // Skip hidden items
+            }
+            if p.is_dir() {
+                entries.push(FilePickerEntry {
+                    name,
+                    path: p.to_string_lossy().to_string(),
+                    kind: FilePickerEntryKind::Directory,
+                });
+            } else if p.is_file() && p.extension().and_then(|ext| ext.to_str()) == Some("json") {
+                entries.push(FilePickerEntry {
+                    name,
+                    path: p.to_string_lossy().to_string(),
+                    kind: FilePickerEntryKind::JsonLevelFile,
+                });
+            }
+        }
+    }
+
+    // Sort: directories first, then alphabetical by name
+    entries.sort_by(|a, b| {
+        match (&a.kind, &b.kind) {
+            (FilePickerEntryKind::Directory, FilePickerEntryKind::JsonLevelFile) => std::cmp::Ordering::Less,
+            (FilePickerEntryKind::JsonLevelFile, FilePickerEntryKind::Directory) => std::cmp::Ordering::Greater,
+            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+        }
+    });
+
+    (parent_path, entries)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -301,5 +389,31 @@ mod tests {
             compute_level_hash(&world2),
             "Rotating a mirror changes puzzle behavior and must produce a different level hash"
         );
+    }
+
+    #[test]
+    fn list_directory_entries_test() {
+        let (parent, entries) = list_directory_entries("levels");
+        assert!(parent.is_some());
+        assert!(!entries.is_empty());
+
+        let has_json = entries.iter().any(|e| e.kind == FilePickerEntryKind::JsonLevelFile);
+        assert!(has_json);
+    }
+
+    #[test]
+    fn level_solution_serialization_test() {
+        let world = test_level();
+        let solutions = vec![
+            LevelSolution {
+                name: "Solver Solution".into(),
+                actions: vec![crate::turn::PlayerAction::Forward, crate::turn::PlayerAction::TurnLeft],
+            }
+        ];
+        let data = LevelData::from_world_with_solutions("Test Level With Solutions", &world, solutions.clone());
+        let json = serde_json::to_string(&data).unwrap();
+        let deserialized: LevelData = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.solutions, solutions);
     }
 }

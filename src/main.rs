@@ -22,6 +22,7 @@ pub struct PlaybackState {
     pub actions: Vec<turn::PlayerAction>,
     pub current_index: usize,
     pub auto_playing: bool,
+    pub speed: f32,
     pub step_timer: Timer,
 }
 
@@ -32,6 +33,7 @@ impl Default for PlaybackState {
             actions: Vec::new(),
             current_index: 0,
             auto_playing: true,
+            speed: 1.0,
             step_timer: Timer::new(Duration::from_millis(400), TimerMode::Repeating),
         }
     }
@@ -315,6 +317,17 @@ fn playback_system(
         playback.auto_playing = !playback.auto_playing;
     }
 
+    // Speed Controls: - / _ or [ decreases speed, + / = or ] increases speed
+    if keys.just_pressed(KeyCode::Minus) || keys.just_pressed(KeyCode::NumpadSubtract) || keys.just_pressed(KeyCode::BracketLeft) {
+        let new_speed = (playback.speed * 0.75).clamp(0.2, 10.0);
+        playback.speed = new_speed;
+        playback.step_timer.set_duration(Duration::from_secs_f32(0.40 / new_speed));
+    } else if keys.just_pressed(KeyCode::Equal) || keys.just_pressed(KeyCode::NumpadAdd) || keys.just_pressed(KeyCode::BracketRight) {
+        let new_speed = (playback.speed * 1.5).clamp(0.2, 10.0);
+        playback.speed = new_speed;
+        playback.step_timer.set_duration(Duration::from_secs_f32(0.40 / new_speed));
+    }
+
     // Manual Step Forward
     if keys.just_pressed(KeyCode::ArrowRight) || keys.just_pressed(KeyCode::Period) {
         if playback.current_index < playback.actions.len() {
@@ -377,14 +390,16 @@ fn update_victory_ui(
         if mode == editor::AppMode::Playback {
             if game.engine.is_won() {
                 text.0 = format!(
-                    "*** PLAYBACK COMPLETE: Goal Struck in {} Steps! ***\n[Esc] Return to Editor  |  [R] Replay  |  [< / >] Step",
-                    playback.current_index
+                    "*** PLAYBACK COMPLETE: Goal Struck in {} Steps! ***\n[Esc] Return to Editor  |  [R] Replay  |  [< / >] Step  |  [- / +] Speed ({:.1}x)",
+                    playback.current_index,
+                    playback.speed
                 );
                 color.0 = Color::srgb(0.3, 1.0, 0.7);
             } else if game.engine.is_lost() {
                 text.0 = format!(
-                    "!!! PLAYBACK: Laser Vaporized Player at Step {} !!!\n[Esc] Return to Editor  |  [R] Restart  |  [<] Step Back",
-                    playback.current_index
+                    "!!! PLAYBACK: Laser Vaporized Player at Step {} !!!\n[Esc] Return to Editor  |  [R] Restart  |  [<] Step Back  |  [- / +] Speed ({:.1}x)",
+                    playback.current_index,
+                    playback.speed
                 );
                 color.0 = Color::srgb(1.0, 0.3, 0.3);
             } else {
@@ -396,13 +411,14 @@ fn update_victory_ui(
                 };
 
                 text.0 = format!(
-                    "{} Step {} / {} ({})\n[Space] Play/Pause  |  [< / >] Step  |  [Esc] Return to Editor  |  [R] Restart",
+                    "TESTING WITH SOLUTION ({:.1}x speed) - {} Step {} / {} ({})\n[Space] Play/Pause  |  [< / >] Step  |  [- / +] Speed  |  [Esc] Return to Editor  |  [R] Restart",
+                    playback.speed,
                     status_label,
                     playback.current_index,
                     playback.actions.len(),
                     next_action_str
                 );
-                color.0 = Color::srgb(0.9, 0.95, 1.0);
+                color.0 = Color::srgb(0.3, 1.0, 0.6); // Green indicator
             }
         } else if mode == editor::AppMode::Playtest {
             if let Some(err) = &game.engine.validation_error {

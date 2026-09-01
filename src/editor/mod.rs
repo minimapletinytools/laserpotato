@@ -44,7 +44,7 @@ pub enum EditorAction {
     NewLevel,
     Save,
     SaveAs,
-    ToggleLevelsMenu,
+    OpenLevel,
     ToggleFloorplanModal,
     ToggleFramePreview,
     RotateViewCcw,
@@ -52,6 +52,13 @@ pub enum EditorAction {
     AttemptSolve,
     TestPlay,
     TestWithSolution,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum UnsavedAction {
+    #[default]
+    NewLevel,
+    OpenLevel,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -93,6 +100,22 @@ pub struct EditorState {
     pub locked_z_layers: std::collections::HashSet<i32>,
     /// Whether the floorplan dialog is currently open.
     pub floorplan_open: bool,
+    /// Whether the Save As dialog is currently open.
+    pub save_as_open: bool,
+    /// Filename text buffer for Save As dialog.
+    pub save_as_filename: String,
+    /// Whether the unsaved changes confirmation dialog is currently open.
+    pub unsaved_confirm_open: bool,
+    /// Pending action that triggered the unsaved changes prompt.
+    pub unsaved_action: UnsavedAction,
+    /// Whether the file picker dialog is currently open.
+    pub file_picker_open: bool,
+    /// Directory path currently being browsed in the file picker.
+    pub file_picker_dir: String,
+    /// Flag indicating that the file picker directory contents need refreshing in the UI.
+    pub file_picker_dirty: bool,
+    /// World state hash when level was last saved/loaded (for detecting unsaved changes).
+    pub last_saved_hash: u64,
     /// Level width for floorplan fill.
     pub floorplan_width: i32,
     /// Level height for floorplan fill.
@@ -113,6 +136,16 @@ pub struct EditorState {
     pub solver_status: String,
     /// Cached solution keyed to level hash: (hash, actions).
     pub cached_solution: Option<(u64, Vec<PlayerAction>)>,
+    /// Saved / recorded solutions for the current level.
+    pub solutions: Vec<crate::level::LevelSolution>,
+    /// Whether the solution picker modal is currently open.
+    pub solution_picker_open: bool,
+    /// Flag indicating that the solution picker list needs refreshing in the UI.
+    pub solution_picker_dirty: bool,
+    /// Whether the current playtest win has already been recorded.
+    pub playtest_win_recorded: bool,
+    /// Playback speed multiplier (default 1.0 = 400ms per step).
+    pub playback_speed: f32,
     /// World state snapshot when entering Playtest / Playback mode.
     pub backup_world: Option<World>,
     /// Toast notification banner message & decay timer.
@@ -141,6 +174,19 @@ impl Default for EditorState {
             box_select_active: false,
             locked_z_layers,
             floorplan_open: false,
+            save_as_open: false,
+            save_as_filename: String::from("custom_puzzle.json"),
+            unsaved_confirm_open: false,
+            unsaved_action: UnsavedAction::NewLevel,
+            file_picker_open: false,
+            file_picker_dir: String::from("levels"),
+            file_picker_dirty: true,
+            solutions: Vec::new(),
+            solution_picker_open: false,
+            solution_picker_dirty: true,
+            playtest_win_recorded: false,
+            playback_speed: 1.0,
+            last_saved_hash: 0,
             floorplan_width: 10,
             floorplan_height: 10,
             floorplan_z: -1,
@@ -163,13 +209,87 @@ impl EditorState {
         self.floorplan_z + 1
     }
 
+    /// Check if the simulation world has unsaved modifications.
+    pub fn has_unsaved_changes(&self, world: &World) -> bool {
+        compute_level_hash(world) != self.last_saved_hash
+    }
+
+    /// Reset level and create a new blank 10x10 puzzle room with perimeter walls and player.
+    pub fn create_new_blank_room(&mut self, engine: &mut TurnEngine) {
+        let mut world = World::new();
+        fill_floorplan(&mut world, 10, 10, -1);
+        world.spawn(BlockKind::Player, IVec3::new(3, 8, 0), vec![IVec3::ZERO]);
+        let gid = world.spawn(BlockKind::Goal, IVec3::new(8, 8, 0), vec![IVec3::ZERO]);
+        if let Some(b) = world.body_mut(gid) {
+            b.tags.set(TagKind::Fixed, TagValue::Unit);
+        }
+        for x in 0..10 {
+            let w1 = world.spawn(BlockKind::Wall, IVec3::new(x, 0, 0), vec![IVec3::ZERO]);
+            if let Some(b) = world.body_mut(w1) {
+                b.tags.set(TagKind::Fixed, TagValue::Unit);
+            }
+            let w2 = world.spawn(BlockKind::Wall, IVec3::new(x, 9, 0), vec![IVec3::ZERO]);
+            if let Some(b) = world.body_mut(w2) {
+                b.tags.set(TagKind::Fixed, TagValue::Unit);
+            }
+        }
+        for y in 1..9 {
+            let w1 = world.spawn(BlockKind::Wall, IVec3::new(0, y, 0), vec![IVec3::ZERO]);
+            if let Some(b) = world.body_mut(w1) {
+                b.tags.set(TagKind::Fixed, TagValue::Unit);
+            }
+            let w2 = world.spawn(BlockKind::Wall, IVec3::new(9, y, 0), vec![IVec3::ZERO]);
+            if let Some(b) = world.body_mut(w2) {
+                b.tags.set(TagKind::Fixed, TagValue::Unit);
+            }
+        }
+        world.sync_grid();
+        *engine = TurnEngine::new(world);
+        self.locked_z_layers.clear();
+        self.locked_z_layers.insert(-1);
+        self.clear_selection();
+        self.cached_solution = None;
+        self.solutions.clear();
+        self.solver_status = "Idle".into();
+        self.last_saved_hash = compute_level_hash(&engine.world);
+        self.current_level_path = "levels/custom_puzzle.json".into();
+        self.toast("Created new blank 10x10 puzzle room with locked floor.");
+    }
+
+    /// Open the file picker modal starting in the `levels` directory.
+    pub fn open_file_picker(&mut self) {
+        self.file_picker_open = true;
+        self.file_picker_dirty = true;
+        if self.file_picker_dir.is_empty() {
+            self.file_picker_dir = "levels".to_string();
+        }
+        self.toast("Browsing level files...");
+    }
+
     /// Close any open modals. Returns true if a modal was closed.
     pub fn close_modals(&mut self) -> bool {
+        let mut closed = false;
         if self.floorplan_open {
             self.floorplan_open = false;
-            return true;
+            closed = true;
         }
-        false
+        if self.save_as_open {
+            self.save_as_open = false;
+            closed = true;
+        }
+        if self.unsaved_confirm_open {
+            self.unsaved_confirm_open = false;
+            closed = true;
+        }
+        if self.file_picker_open {
+            self.file_picker_open = false;
+            closed = true;
+        }
+        if self.solution_picker_open {
+            self.solution_picker_open = false;
+            closed = true;
+        }
+        closed
     }
 
     /// Return the primary selected body ID (first selected block).
@@ -251,6 +371,8 @@ impl Plugin for EditorPlugin {
                     camera::camera_controller_system,
                     ui::update_editor_ui_system,
                     ui::update_editor_status_and_modal_ui_system,
+                    ui::update_file_picker_ui_system,
+                    ui::update_solution_picker_ui_system,
                     update_palette_3d_preview,
                     background_solver_poll_system,
                     draw_editor_selection_gizmos,
@@ -263,6 +385,8 @@ impl Plugin for EditorPlugin {
                 (
                     editor_grid_interaction_system,
                     editor_button_clicks_system,
+                    file_picker_button_clicks_system,
+                    solution_picker_button_clicks_system,
                 )
                     .run_if(in_state(AppMode::Editor)),
             );
@@ -514,6 +638,85 @@ pub fn fill_floorplan(world: &mut World, width: i32, height: i32, z: i32) {
     world.sync_grid();
 }
 
+/// Helper function to execute Save As with the filename in `editor.save_as_filename`.
+pub fn execute_save_as(editor: &mut EditorState, world: &World) {
+    let mut filename = editor.save_as_filename.trim().to_string();
+    if filename.is_empty() {
+        filename = "custom_puzzle.json".to_string();
+    }
+    if !filename.ends_with(".json") {
+        filename.push_str(".json");
+    }
+    let save_path = if filename.starts_with("levels/") {
+        filename
+    } else {
+        format!("levels/{}", filename)
+    };
+
+    // Prune invalid solutions against current world before saving
+    editor.solutions.retain(|s| level::validate_solution(world, &s.actions));
+
+    let level_data = LevelData::from_world_with_solutions("Custom Level", world, editor.solutions.clone());
+    match level::save_level_to_file(&save_path, &level_data) {
+        Ok(_) => {
+            editor.current_level_path = save_path.clone();
+            editor.last_saved_hash = compute_level_hash(world);
+            editor.save_as_open = false;
+            editor.toast(format!("Saved level with {} solution(s) to {}", editor.solutions.len(), save_path));
+        }
+        Err(e) => {
+            editor.toast(format!("Save error: {}", e));
+        }
+    }
+}
+
+/// Map KeyCode to character for typing in text input fields.
+fn key_code_to_char(key: KeyCode, shift: bool) -> Option<char> {
+    match key {
+        KeyCode::KeyA => Some(if shift { 'A' } else { 'a' }),
+        KeyCode::KeyB => Some(if shift { 'B' } else { 'b' }),
+        KeyCode::KeyC => Some(if shift { 'C' } else { 'c' }),
+        KeyCode::KeyD => Some(if shift { 'D' } else { 'd' }),
+        KeyCode::KeyE => Some(if shift { 'E' } else { 'e' }),
+        KeyCode::KeyF => Some(if shift { 'F' } else { 'f' }),
+        KeyCode::KeyG => Some(if shift { 'G' } else { 'g' }),
+        KeyCode::KeyH => Some(if shift { 'H' } else { 'h' }),
+        KeyCode::KeyI => Some(if shift { 'I' } else { 'i' }),
+        KeyCode::KeyJ => Some(if shift { 'J' } else { 'j' }),
+        KeyCode::KeyK => Some(if shift { 'K' } else { 'k' }),
+        KeyCode::KeyL => Some(if shift { 'L' } else { 'l' }),
+        KeyCode::KeyM => Some(if shift { 'M' } else { 'm' }),
+        KeyCode::KeyN => Some(if shift { 'N' } else { 'n' }),
+        KeyCode::KeyO => Some(if shift { 'O' } else { 'o' }),
+        KeyCode::KeyP => Some(if shift { 'P' } else { 'p' }),
+        KeyCode::KeyQ => Some(if shift { 'Q' } else { 'q' }),
+        KeyCode::KeyR => Some(if shift { 'R' } else { 'r' }),
+        KeyCode::KeyS => Some(if shift { 'S' } else { 's' }),
+        KeyCode::KeyT => Some(if shift { 'T' } else { 't' }),
+        KeyCode::KeyU => Some(if shift { 'U' } else { 'u' }),
+        KeyCode::KeyV => Some(if shift { 'V' } else { 'v' }),
+        KeyCode::KeyW => Some(if shift { 'W' } else { 'w' }),
+        KeyCode::KeyX => Some(if shift { 'X' } else { 'x' }),
+        KeyCode::KeyY => Some(if shift { 'Y' } else { 'y' }),
+        KeyCode::KeyZ => Some(if shift { 'Z' } else { 'z' }),
+        KeyCode::Digit0 => Some('0'),
+        KeyCode::Digit1 => Some('1'),
+        KeyCode::Digit2 => Some('2'),
+        KeyCode::Digit3 => Some('3'),
+        KeyCode::Digit4 => Some('4'),
+        KeyCode::Digit5 => Some('5'),
+        KeyCode::Digit6 => Some('6'),
+        KeyCode::Digit7 => Some('7'),
+        KeyCode::Digit8 => Some('8'),
+        KeyCode::Digit9 => Some('9'),
+        KeyCode::Minus => Some(if shift { '_' } else { '-' }),
+        KeyCode::Period => Some('.'),
+        KeyCode::Slash => Some('/'),
+        KeyCode::Space => Some('_'),
+        _ => None,
+    }
+}
+
 fn editor_grid_interaction_system(
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform), With<camera::MainCamera>>,
@@ -522,6 +725,10 @@ fn editor_grid_interaction_system(
     mut editor: ResMut<EditorState>,
     mut game: ResMut<GameState>,
 ) {
+    if editor.floorplan_open || editor.save_as_open || editor.unsaved_confirm_open || editor.file_picker_open || editor.solution_picker_open {
+        return;
+    }
+
     let shift_held = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
 
     // 1. Multi-block transform shortcuts for all selected blocks
@@ -964,6 +1171,12 @@ fn editor_button_clicks_system(
                 Option<&ui::FloorplanLockToggleBtn>,
                 Option<&ui::FloorplanCloseBtn>,
             ),
+            (
+                Option<&ui::SaveAsConfirmBtn>,
+                Option<&ui::SaveAsCancelBtn>,
+                Option<&ui::DiscardConfirmBtn>,
+                Option<&ui::DiscardCancelBtn>,
+            ),
         ),
         (Changed<Interaction>, With<Button>),
     >,
@@ -971,7 +1184,7 @@ fn editor_button_clicks_system(
     mut editor: ResMut<EditorState>,
     mut game: ResMut<GameState>,
     mut next_mode: ResMut<NextState<AppMode>>,
-    mut playback: ResMut<crate::PlaybackState>,
+    _playback: ResMut<crate::PlaybackState>,
 ) {
     for (
         interaction,
@@ -983,10 +1196,31 @@ fn editor_button_clicks_system(
         (z_mode_btn, z_inc_btn, z_dec_btn),
         (fp_w_dec, fp_w_inc, fp_h_dec, fp_h_inc, fp_z_dec, fp_z_inc),
         (fp_fill, fp_lock_toggle, fp_close),
+        (save_as_confirm, save_as_cancel, discard_confirm, discard_cancel),
     ) in &mut interaction_query
     {
         if *interaction != Interaction::Pressed {
             continue;
+        }
+
+        // Modal Action buttons
+        if save_as_confirm.is_some() {
+            execute_save_as(&mut editor, &game.engine.world);
+        }
+        if save_as_cancel.is_some() {
+            editor.save_as_open = false;
+            editor.toast("Cancelled Save As.");
+        }
+        if discard_confirm.is_some() {
+            editor.unsaved_confirm_open = false;
+            match editor.unsaved_action {
+                UnsavedAction::NewLevel => editor.create_new_blank_room(&mut game.engine),
+                UnsavedAction::OpenLevel => editor.open_file_picker(),
+            }
+        }
+        if discard_cancel.is_some() {
+            editor.unsaved_confirm_open = false;
+            editor.toast("Cancelled.");
         }
 
         // 1. Palette block selection
@@ -1098,70 +1332,41 @@ fn editor_button_clicks_system(
         if let Some(btn) = action_btn {
             match btn.0 {
                 EditorAction::NewLevel => {
-                    let mut world = World::new();
-                    fill_floorplan(&mut world, 10, 10, -1);
-                    world.spawn(BlockKind::Player, IVec3::new(3, 8, 0), vec![IVec3::ZERO]);
-                    let gid = world.spawn(BlockKind::Goal, IVec3::new(8, 8, 0), vec![IVec3::ZERO]);
-                    world.body_mut(gid).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
-                    for x in 0..10 {
-                        let w1 = world.spawn(BlockKind::Wall, IVec3::new(x, 0, 0), vec![IVec3::ZERO]);
-                        world.body_mut(w1).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
-                        let w2 = world.spawn(BlockKind::Wall, IVec3::new(x, 9, 0), vec![IVec3::ZERO]);
-                        world.body_mut(w2).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
+                    if editor.has_unsaved_changes(&game.engine.world) {
+                        editor.unsaved_action = UnsavedAction::NewLevel;
+                        editor.unsaved_confirm_open = true;
+                    } else {
+                        editor.create_new_blank_room(&mut game.engine);
                     }
-                    for y in 1..9 {
-                        let w1 = world.spawn(BlockKind::Wall, IVec3::new(0, y, 0), vec![IVec3::ZERO]);
-                        world.body_mut(w1).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
-                        let w2 = world.spawn(BlockKind::Wall, IVec3::new(9, y, 0), vec![IVec3::ZERO]);
-                        world.body_mut(w2).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
-                    }
-                    world.sync_grid();
-                    game.engine = TurnEngine::new(world);
-                    editor.locked_z_layers.insert(-1);
-                    editor.clear_selection();
-                    editor.cached_solution = None;
-                    editor.solver_status = "Idle".into();
-                    editor.toast("Created new blank 10x10 puzzle room with locked floor.");
                 }
                 EditorAction::Save => {
                     let path = editor.current_level_path.clone();
-                    let level_data = LevelData::from_world("Custom Level", &game.engine.world);
+                    // Validate and prune stale solutions
+                    editor.solutions.retain(|s| level::validate_solution(&game.engine.world, &s.actions));
+                    let sol_count = editor.solutions.len();
+                    let level_data = LevelData::from_world_with_solutions("Custom Level", &game.engine.world, editor.solutions.clone());
                     match level::save_level_to_file(&path, &level_data) {
-                        Ok(_) => editor.toast(format!("Saved level to {}", path)),
+                        Ok(_) => {
+                            editor.last_saved_hash = compute_level_hash(&game.engine.world);
+                            editor.toast(format!("Saved level with {} solution(s) to {}", sol_count, path));
+                        }
                         Err(e) => editor.toast(format!("Save error: {}", e)),
                     }
                 }
                 EditorAction::SaveAs => {
-                    let timestamp = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs();
-                    let new_path = format!("levels/puzzle_{}.json", timestamp);
-                    let level_data = LevelData::from_world("Custom Level", &game.engine.world);
-                    match level::save_level_to_file(&new_path, &level_data) {
-                        Ok(_) => {
-                            editor.current_level_path = new_path.clone();
-                            editor.toast(format!("Saved new level to {}", new_path));
-                        }
-                        Err(e) => editor.toast(format!("Save error: {}", e)),
-                    }
+                    let base_name = std::path::Path::new(&editor.current_level_path)
+                        .file_name()
+                        .and_then(|f| f.to_str())
+                        .unwrap_or("custom_puzzle.json");
+                    editor.save_as_filename = base_name.to_string();
+                    editor.save_as_open = true;
                 }
-                EditorAction::ToggleLevelsMenu => {
-                    let files = level::list_level_files();
-                    if files.is_empty() {
-                        editor.toast("No saved levels found in levels/ directory.");
+                EditorAction::OpenLevel => {
+                    if editor.has_unsaved_changes(&game.engine.world) {
+                        editor.unsaved_action = UnsavedAction::OpenLevel;
+                        editor.unsaved_confirm_open = true;
                     } else {
-                        let curr_idx = files.iter().position(|p| p == &editor.current_level_path).unwrap_or(0);
-                        let next_idx = (curr_idx + 1) % files.len();
-                        let target_path = &files[next_idx];
-                        if let Ok(lvl) = level::load_level_from_file(target_path) {
-                            game.engine = TurnEngine::new(lvl.to_world());
-                            editor.current_level_path = target_path.clone();
-                            editor.clear_selection();
-                            editor.cached_solution = None;
-                            editor.solver_status = "Idle".into();
-                            editor.toast(format!("Loaded: {}", target_path));
-                        }
+                        editor.open_file_picker();
                     }
                 }
                 EditorAction::ToggleFloorplanModal => {
@@ -1212,6 +1417,7 @@ fn editor_button_clicks_system(
                     match game.engine.start_playtest() {
                         Ok(()) => {
                             editor.backup_world = Some(game.engine.frame_zero_star.clone());
+                            editor.playtest_win_recorded = false;
                             next_mode.set(AppMode::Playtest);
                         }
                         Err(err) => {
@@ -1224,24 +1430,13 @@ fn editor_button_clicks_system(
                         editor.toast("Cannot play solution: level has spontaneous movement.");
                         return;
                     }
-                    let current_hash = compute_level_hash(&game.engine.world);
-                    let cached_actions = editor
-                        .cached_solution
-                        .as_ref()
-                        .filter(|(h, acts)| *h == current_hash && !acts.is_empty())
-                        .map(|(_, acts)| acts.clone());
-
-                    if let Some(actions) = cached_actions {
-                        if game.engine.start_playtest().is_ok() {
-                            editor.backup_world = Some(game.engine.frame_zero_star.clone());
-                            playback.is_playback = true;
-                            playback.actions = actions;
-                            playback.current_index = 0;
-                            playback.auto_playing = true;
-                            next_mode.set(AppMode::Playback);
-                        }
+                    // Validate and prune solutions against current world
+                    editor.solutions.retain(|s| level::validate_solution(&game.engine.world, &s.actions));
+                    if editor.solutions.is_empty() {
+                        editor.toast("No valid solutions for current level. Run 'Solve Level' or play to solve!");
                     } else {
-                        editor.toast("No valid solution cached for current level. Click 'Solve Level'.");
+                        editor.solution_picker_open = true;
+                        editor.solution_picker_dirty = true;
                     }
                 }
             }
@@ -1398,6 +1593,129 @@ fn editor_button_clicks_system(
     }
 }
 
+/// Handles button clicks inside the floating File Picker dialog.
+fn file_picker_button_clicks_system(
+    mut interaction_query: Query<
+        (
+            &Interaction,
+            Option<&ui::FilePickerUpBtn>,
+            Option<&ui::FilePickerDirBtn>,
+            Option<&ui::FilePickerFileBtn>,
+            Option<&ui::FilePickerCancelBtn>,
+        ),
+        (Changed<Interaction>, With<Button>),
+    >,
+    mut editor: ResMut<EditorState>,
+    mut game: ResMut<GameState>,
+) {
+    if !editor.file_picker_open {
+        return;
+    }
+
+    for (interaction, up_btn, dir_btn, file_btn, cancel_btn) in &mut interaction_query {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+
+        if let Some(up) = up_btn {
+            editor.file_picker_dir = up.0.clone();
+            editor.file_picker_dirty = true;
+        } else if let Some(dir) = dir_btn {
+            editor.file_picker_dir = dir.0.clone();
+            editor.file_picker_dirty = true;
+        } else if let Some(file) = file_btn {
+            let target_path = file.0.clone();
+            match level::load_level_from_file(&target_path) {
+                Ok(lvl) => {
+                    game.engine = TurnEngine::new(lvl.to_world());
+                    editor.current_level_path = target_path.clone();
+                    editor.last_saved_hash = compute_level_hash(&game.engine.world);
+                    editor.solutions = lvl.solutions.clone();
+                    editor.solutions.retain(|s| level::validate_solution(&game.engine.world, &s.actions));
+                    let sol_count = editor.solutions.len();
+                    editor.clear_selection();
+                    editor.cached_solution = None;
+                    editor.solver_status = "Idle".into();
+                    editor.file_picker_open = false;
+                    editor.toast(format!("Loaded: {} ({} solution(s))", target_path, sol_count));
+                }
+                Err(e) => {
+                    editor.toast(format!("Load error: {}", e));
+                }
+            }
+        } else if cancel_btn.is_some() {
+            editor.file_picker_open = false;
+            editor.toast("Cancelled file picker.");
+        }
+    }
+}
+
+/// Handles button clicks inside the floating Solution Picker dialog.
+fn solution_picker_button_clicks_system(
+    mut interaction_query: Query<
+        (
+            &Interaction,
+            Option<&ui::SolutionPlayBtn>,
+            Option<&ui::SolutionDeleteBtn>,
+            Option<&ui::SolutionPickerCancelBtn>,
+            Option<&ui::SolutionSpeedDecBtn>,
+            Option<&ui::SolutionSpeedIncBtn>,
+            Option<&ui::SolutionSpeedPresetBtn>,
+        ),
+        (Changed<Interaction>, With<Button>),
+    >,
+    mut editor: ResMut<EditorState>,
+    mut game: ResMut<GameState>,
+    mut next_mode: ResMut<NextState<AppMode>>,
+    mut playback: ResMut<crate::PlaybackState>,
+) {
+    if !editor.solution_picker_open {
+        return;
+    }
+
+    for (interaction, play_btn, del_btn, cancel_btn, speed_dec, speed_inc, speed_preset) in &mut interaction_query {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+
+        if let Some(play) = play_btn {
+            let idx = play.0;
+            if idx < editor.solutions.len() {
+                let sol = editor.solutions[idx].clone();
+                editor.solution_picker_open = false;
+                if game.engine.start_playtest().is_ok() {
+                    editor.backup_world = Some(game.engine.frame_zero_star.clone());
+                    playback.is_playback = true;
+                    playback.actions = sol.actions;
+                    playback.current_index = 0;
+                    playback.auto_playing = true;
+                    playback.speed = editor.playback_speed;
+                    playback.step_timer = Timer::from_seconds(0.40 / editor.playback_speed.max(0.1), TimerMode::Repeating);
+                    let speed = editor.playback_speed;
+                    next_mode.set(AppMode::Playback);
+                    editor.toast(format!("Playing solution #{}: {} ({:.1}x speed)", idx + 1, sol.name, speed));
+                }
+            }
+        } else if let Some(del) = del_btn {
+            let idx = del.0;
+            if idx < editor.solutions.len() {
+                let removed = editor.solutions.remove(idx);
+                editor.solution_picker_dirty = true;
+                editor.toast(format!("Deleted solution: {}", removed.name));
+            }
+        } else if cancel_btn.is_some() {
+            editor.solution_picker_open = false;
+            editor.toast("Cancelled solution picker.");
+        } else if speed_dec.is_some() {
+            editor.playback_speed = (editor.playback_speed * 0.75).clamp(0.2, 10.0);
+        } else if speed_inc.is_some() {
+            editor.playback_speed = (editor.playback_speed * 1.5).clamp(0.2, 10.0);
+        } else if let Some(preset) = speed_preset {
+            editor.playback_speed = preset.0;
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Background Solver Receiver
 // ---------------------------------------------------------------------------
@@ -1428,7 +1746,14 @@ fn background_solver_poll_system(
                     result.duration
                 );
                 editor.cached_solution = Some((current_hash, result.actions.clone()));
-                let msg = format!("Solver: Found {}-step solution!", result.actions.len());
+                let name = format!("Solver BFS ({} steps)", result.actions.len());
+                if !editor.solutions.iter().any(|s| s.actions == result.actions) {
+                    editor.solutions.push(crate::level::LevelSolution {
+                        name,
+                        actions: result.actions.clone(),
+                    });
+                }
+                let msg = format!("Solver: Found {}-step solution (added to solutions)!", result.actions.len());
                 editor.toast(msg);
             } else {
                 editor.solver_status = format!("✗ No Solution ({:.2?})", result.duration);
@@ -1571,6 +1896,68 @@ fn editor_keyboard_shortcuts_system(
     mut game: ResMut<GameState>,
     mut playback: ResMut<crate::PlaybackState>,
 ) {
+    if *app_mode.get() == AppMode::Editor {
+        if editor.save_as_open {
+            let shift_held = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+            if keys.just_pressed(KeyCode::Escape) {
+                editor.save_as_open = false;
+                editor.toast("Cancelled Save As [Esc].");
+                return;
+            }
+            if keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::NumpadEnter) {
+                execute_save_as(&mut editor, &game.engine.world);
+                return;
+            }
+            if keys.just_pressed(KeyCode::Backspace) {
+                editor.save_as_filename.pop();
+                return;
+            }
+            for key in keys.get_just_pressed() {
+                if let Some(c) = key_code_to_char(*key, shift_held) {
+                    if editor.save_as_filename.len() < 64 {
+                        editor.save_as_filename.push(c);
+                    }
+                }
+            }
+            return;
+        }
+
+        if editor.file_picker_open {
+            if keys.just_pressed(KeyCode::Escape) {
+                editor.file_picker_open = false;
+                editor.toast("Cancelled file picker [Esc].");
+                return;
+            }
+            return;
+        }
+
+        if editor.solution_picker_open {
+            if keys.just_pressed(KeyCode::Escape) {
+                editor.solution_picker_open = false;
+                editor.toast("Cancelled solution picker [Esc].");
+                return;
+            }
+            return;
+        }
+
+        if editor.unsaved_confirm_open {
+            if keys.just_pressed(KeyCode::Escape) {
+                editor.unsaved_confirm_open = false;
+                editor.toast("Cancelled [Esc].");
+                return;
+            }
+            if keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::NumpadEnter) {
+                editor.unsaved_confirm_open = false;
+                match editor.unsaved_action {
+                    UnsavedAction::NewLevel => editor.create_new_blank_room(&mut game.engine),
+                    UnsavedAction::OpenLevel => editor.open_file_picker(),
+                }
+                return;
+            }
+            return;
+        }
+    }
+
     // Handle Escape key:
     // 1. Return to Editor from Playtest or Playback mode
     // 2. Close any open modal (e.g. Floorplan modal)
@@ -1853,5 +2240,102 @@ mod tests {
         // Floor Z is view-only in stack mode and comes from floorplan_z
         editor.floorplan_z = -2;
         assert_eq!(editor.floorplan_z, -2);
+    }
+
+    #[test]
+    fn save_as_dialog_and_unsaved_changes_test() {
+        let mut editor = EditorState::default();
+        let mut world = World::new();
+        editor.last_saved_hash = compute_level_hash(&world);
+
+        // Initially no unsaved changes
+        assert!(!editor.has_unsaved_changes(&world));
+
+        // Spawning a block causes unsaved changes
+        world.spawn(BlockKind::Pushable, IVec3::new(1, 2, 0), vec![IVec3::ZERO]);
+        assert!(editor.has_unsaved_changes(&world));
+
+        // Open Save As dialog
+        editor.save_as_open = true;
+        editor.save_as_filename = "my_custom_level".to_string();
+
+        // Modals close properly on close_modals
+        assert!(editor.close_modals());
+        assert!(!editor.save_as_open);
+
+        // Open Unsaved Confirm dialog
+        editor.unsaved_confirm_open = true;
+        assert!(editor.close_modals());
+        assert!(!editor.unsaved_confirm_open);
+
+        // Test key code char mapping
+        assert_eq!(key_code_to_char(KeyCode::KeyA, false), Some('a'));
+        assert_eq!(key_code_to_char(KeyCode::KeyA, true), Some('A'));
+        assert_eq!(key_code_to_char(KeyCode::Digit1, false), Some('1'));
+        assert_eq!(key_code_to_char(KeyCode::Minus, true), Some('_'));
+        assert_eq!(key_code_to_char(KeyCode::Period, false), Some('.'));
+    }
+
+    #[test]
+    fn file_picker_and_unsaved_flow_test() {
+        let mut editor = EditorState::default();
+        assert!(!editor.file_picker_open);
+        assert_eq!(editor.file_picker_dir, "levels");
+
+        // Opening file picker
+        editor.open_file_picker();
+        assert!(editor.file_picker_open);
+        assert!(editor.file_picker_dirty);
+
+        // Closing modals
+        assert!(editor.close_modals());
+        assert!(!editor.file_picker_open);
+
+        // Unsaved action routing
+        editor.unsaved_action = UnsavedAction::OpenLevel;
+        editor.unsaved_confirm_open = true;
+        assert_eq!(editor.unsaved_action, UnsavedAction::OpenLevel);
+
+        assert!(editor.close_modals());
+        assert!(!editor.unsaved_confirm_open);
+    }
+
+    #[test]
+    fn solution_picker_and_validation_test() {
+        let mut editor = EditorState::default();
+        let mut world = World::new();
+        // Laser at (2, 0, 0) shooting +Y
+        world.spawn(BlockKind::LaserSource, IVec3::new(2, 0, 0), vec![IVec3::ZERO]);
+        // Pushable mirror at (1, 2, 0) reflecting +Y -> +X
+        world.spawn(BlockKind::Mirror, IVec3::new(1, 2, 0), vec![IVec3::ZERO]);
+        // Goal at (5, 2, 0)
+        let gid = world.spawn(BlockKind::Goal, IVec3::new(5, 2, 0), vec![IVec3::ZERO]);
+        world.body_mut(gid).unwrap().tags.set(crate::sim::TagKind::Fixed, crate::sim::TagValue::Unit);
+        // Player at (0, 2, 0) facing East (+X)
+        let pid = world.spawn(BlockKind::Player, IVec3::new(0, 2, 0), vec![IVec3::ZERO]);
+        world.body_mut(pid).unwrap().orientation = crate::sim::CubeRot::from_facing_2d(IVec3::X);
+
+        // Solution 1: valid 1-step push into laser beam
+        editor.solutions.push(crate::level::LevelSolution {
+            name: "Push Mirror Win".into(),
+            actions: vec![PlayerAction::Forward],
+        });
+        // Solution 2: invalid sequence that never wins
+        editor.solutions.push(crate::level::LevelSolution {
+            name: "Invalid Turn".into(),
+            actions: vec![PlayerAction::TurnLeft],
+        });
+
+        assert_eq!(editor.solutions.len(), 2);
+
+        // Validation test: retain only valid solutions
+        editor.solutions.retain(|s| level::validate_solution(&world, &s.actions));
+        assert_eq!(editor.solutions.len(), 1);
+        assert_eq!(editor.solutions[0].name, "Push Mirror Win");
+
+        // Solution picker modal opening and closing
+        editor.solution_picker_open = true;
+        assert!(editor.close_modals());
+        assert!(!editor.solution_picker_open);
     }
 }

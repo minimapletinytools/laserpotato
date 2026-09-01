@@ -20,6 +20,7 @@ use crate::GameState;
 pub fn keyboard_input_system(
     keys: Res<ButtonInput<KeyCode>>,
     mut game: ResMut<GameState>,
+    mut editor: ResMut<crate::editor::EditorState>,
 ) {
     let mut action = None;
 
@@ -52,5 +53,21 @@ pub fn keyboard_input_system(
 
     if let Some(act) = action {
         game.engine.apply(act);
+        if game.engine.is_won() && !editor.playtest_win_recorded {
+            if !game.engine.action_history.is_empty() {
+                let actions = game.engine.action_history.clone();
+                let name = format!("Player Play #{} ({} steps)", editor.solutions.len() + 1, actions.len());
+                if !editor.solutions.iter().any(|s| s.actions == actions) {
+                    editor.solutions.push(crate::level::LevelSolution {
+                        name,
+                        actions,
+                    });
+                    editor.toast(format!("Level Solved! Solution recorded ({} steps).", game.engine.action_history.len()));
+                }
+            }
+            editor.playtest_win_recorded = true;
+        } else if !game.engine.is_won() {
+            editor.playtest_win_recorded = false;
+        }
     }
 }
