@@ -133,15 +133,16 @@ DONE-do some research into building solver
     -Overhaul/rebuild solver from scratch: replace micro-step expansion with macro-move reachability search
 
 
-
--start a list of block movement rules for documentation, think carefull about this, we want to document it in such a way so that 
+DNOE-start a list of block movement rules for documentation, think carefull about this, we want to document it in such a way so that 
   -the level advance function is sensible and predictable
   -the level solver thingy can somewhat understand these rules for maknig heuristics
   -there will be a level analyzer in the future as well, which will look for "interesting moves" which depend on how these rules are applied or if applied together
 
--new movement rules
+DONE-new movement rules
     -moveable blocks move together when stacked
     -if a moveable block has nothing underneath it it should fall, this is a STATE triggered move rather than a move triggered move, so it will not ahppen on the same subframe as the block underneath it being removed.
+
+-consider adding level boundary rules... rather than rely on blacks... walking on outer wall is a cool mechanic..
 
 -rework left side menu
     -fix preview (or move preview over to right side menu?)
