@@ -169,6 +169,9 @@ pub fn resolve_frame_one(frame_zero_star: &World) -> (World, Vec<LaserSegment>, 
         .map(|b| (b.id, b.anchor, b.orientation))
         .collect();
 
+    // Multi-pass state settlement (e.g. unsupported bodies settling under gravity)
+    resolve_gravity_settlement(&mut frame1_world);
+
     // Multi-pass state / laser resolution
     let laser_state = laser::cast_all_lasers(&frame1_world);
     apply_laser_burn_tags(&mut frame1_world, &laser_state);
@@ -346,10 +349,13 @@ impl TurnEngine {
         // Snapshot for the undo stack.
         let snapshot = self.world.clone();
 
-        // --- movement phase -----------------------------------------------
+        // --- 1. Movement phase (Action / Move-Triggered) -------------------
         self.resolve_movement(&action);
 
-        // --- state / laser phase ------------------------------------------
+        // --- 2. State settlement phase (State-Triggered Gravity) -----------
+        resolve_gravity_settlement(&mut self.world);
+
+        // --- 3. State / Laser phase ----------------------------------------
         self.laser_state = laser::cast_all_lasers(&self.world);
         apply_laser_burn_tags(&mut self.world, &self.laser_state);
 
@@ -539,35 +545,59 @@ fn evaluate_outcome(world: &World, laser_state: &[LaserSegment]) -> GameOutcome 
 }
 
 // ---------------------------------------------------------------------------
-// Push-chain resolution
+// Push-chain & Stack Resolution
 // ---------------------------------------------------------------------------
 
 /// Starting from `mover_id` wanting to step in `direction`, collect every
-/// body that must also move (transitively pushed). Returns `None` if the
-/// chain is blocked by an immovable body.
+/// body that must also move (transitively pushed or carried by stacked friction).
+/// Returns `None` if the chain is blocked by an immovable body.
 pub fn collect_push_chain(world: &World, mover_id: BodyId, direction: IVec3) -> Option<Vec<BodyId>> {
     let mut chain = world.combined_group_members(mover_id);
     let mut i = 0;
 
     while i < chain.len() {
         let body_id = chain[i];
-        let body = world.body(body_id).unwrap();
+        let body = match world.body(body_id) {
+            Some(b) => b,
+            None => return None,
+        };
 
         for cell in body.world_cells() {
+            // 1. Forward Push: check cell in movement direction
             let target = cell + direction;
             if let Some(occupant_id) = world.grid().occupant_at(target) {
-                if chain.contains(&occupant_id) {
-                    continue;
+                if !chain.contains(&occupant_id) {
+                    let occupant = world.body(occupant_id).unwrap();
+                    if !occupant.is_pushable() {
+                        return None;
+                    }
+
+                    let group_members = world.combined_group_members(occupant_id);
+                    for member in group_members {
+                        if !chain.contains(&member) {
+                            chain.push(member);
+                        }
+                    }
                 }
-                let occupant = world.body(occupant_id).unwrap();
-                if !occupant.is_pushable() {
-                    return None;
-                }
-                
-                let group_members = world.combined_group_members(occupant_id);
-                for member in group_members {
-                    if !chain.contains(&member) {
-                        chain.push(member);
+            }
+
+            // 2. Frictional Stack Drag: if moving horizontally, any block resting directly above (cell + Z) moves along
+            if direction.z == 0 {
+                let above_cell = cell + IVec3::Z;
+                if let Some(above_id) = world.grid().occupant_at(above_cell) {
+                    if !chain.contains(&above_id) {
+                        let above_body = world.body(above_id).unwrap();
+                        if !above_body.is_pushable() {
+                            // Immovable fixed block resting on top prevents the lower block from sliding
+                            return None;
+                        }
+
+                        let group_members = world.combined_group_members(above_id);
+                        for member in group_members {
+                            if !chain.contains(&member) {
+                                chain.push(member);
+                            }
+                        }
                     }
                 }
             }
@@ -576,6 +606,88 @@ pub fn collect_push_chain(world: &World, mover_id: BodyId, direction: IVec3) -> 
     }
 
     Some(chain)
+}
+
+// ---------------------------------------------------------------------------
+// State-Triggered Physics & Gravity Settlement
+// ---------------------------------------------------------------------------
+
+/// Maximum passes allowed during a single turn's state settlement.
+pub const MAX_SETTLEMENT_PASSES: usize = 32;
+
+/// Compute the set of all [`BodyId`]s that are transitively supported by fixed bodies, floors, walls, or base ground.
+pub fn compute_supported_body_ids(world: &World) -> std::collections::HashSet<BodyId> {
+    let mut supported = std::collections::HashSet::new();
+
+    // 1. Base anchors: all fixed bodies (floors, walls, fixed blocks), or any body resting at base ground level (z <= 0)
+    for body in world.bodies() {
+        if body.is_fixed() || body.world_cells().iter().all(|c| c.z <= 0) {
+            supported.insert(body.id);
+        }
+    }
+
+    // 2. Transitive upward support propagation:
+    // A moveable body is supported if any of its cells rests on a solid body that is already supported
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for body in world.bodies() {
+            if supported.contains(&body.id) {
+                continue;
+            }
+
+            for cell in body.world_cells() {
+                let below_cell = cell - IVec3::Z;
+                if let Some(support_id) = world.grid().occupant_at(below_cell) {
+                    if supported.contains(&support_id) {
+                        if let Some(support_body) = world.body(support_id) {
+                            if support_body.properties().is_solid {
+                                supported.insert(body.id);
+                                changed = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    supported
+}
+
+/// Resolves state-triggered physics (e.g. unsupported moveable bodies falling under gravity).
+///
+/// Runs after the active player action subframe. All unsupported moveable bodies fall in lockstep
+/// until reaching a supported rest position.
+pub fn resolve_gravity_settlement(world: &mut World) -> bool {
+    let mut any_settled = false;
+
+    for _pass in 0..MAX_SETTLEMENT_PASSES {
+        let supported = compute_supported_body_ids(world);
+        let mut bodies_to_fall = Vec::new();
+
+        for body in world.bodies() {
+            if !body.is_fixed() && !supported.contains(&body.id) {
+                bodies_to_fall.push(body.id);
+            }
+        }
+
+        if bodies_to_fall.is_empty() {
+            break;
+        }
+
+        for body_id in bodies_to_fall {
+            if let Some(b) = world.body_mut(body_id) {
+                b.anchor -= IVec3::Z;
+                any_settled = true;
+            }
+        }
+
+        world.sync_grid();
+    }
+
+    any_settled
 }
 
 // ---------------------------------------------------------------------------
@@ -952,5 +1064,111 @@ mod tests {
 
         // Invalid move: turning left does not push mirror into beam
         assert!(!validate_solution(&world, &[PlayerAction::TurnLeft]));
+    }
+
+    #[test]
+    fn stacked_moveable_blocks_move_together() {
+        let mut world = World::new();
+        // Floor at z = -1
+        for x in 0..5 {
+            let fid = world.spawn(BlockKind::Floor, IVec3::new(x, 0, -1), vec![IVec3::ZERO]);
+            world.body_mut(fid).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
+        }
+        // Player at (0, 0, 0)
+        let pid = world.spawn(BlockKind::Player, IVec3::new(0, 0, 0), vec![IVec3::ZERO]);
+        world.body_mut(pid).unwrap().orientation = CubeRot::from_facing_2d(IVec3::X);
+
+        // Crate A at (1, 0, 0)
+        let aid = world.spawn(BlockKind::Pushable, IVec3::new(1, 0, 0), vec![IVec3::ZERO]);
+        // Mirror B stacked on top of A at (1, 0, 1)
+        let bid = world.spawn(BlockKind::Mirror, IVec3::new(1, 0, 1), vec![IVec3::ZERO]);
+
+        let mut engine = TurnEngine::new(world);
+        assert_eq!(engine.apply(PlayerAction::Forward), TurnResult::Ok);
+
+        // Player advanced to (1, 0, 0), A moved to (2, 0, 0), B moved to (2, 0, 1)
+        assert_eq!(engine.world.body(pid).unwrap().anchor, IVec3::new(1, 0, 0));
+        assert_eq!(engine.world.body(aid).unwrap().anchor, IVec3::new(2, 0, 0));
+        assert_eq!(engine.world.body(bid).unwrap().anchor, IVec3::new(2, 0, 1));
+    }
+
+    #[test]
+    fn stacked_block_blocked_by_overhead_obstacle() {
+        let mut world = World::new();
+        for x in 0..5 {
+            let fid = world.spawn(BlockKind::Floor, IVec3::new(x, 0, -1), vec![IVec3::ZERO]);
+            world.body_mut(fid).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
+        }
+        let pid = world.spawn(BlockKind::Player, IVec3::new(0, 0, 0), vec![IVec3::ZERO]);
+        world.body_mut(pid).unwrap().orientation = CubeRot::from_facing_2d(IVec3::X);
+
+        let aid = world.spawn(BlockKind::Pushable, IVec3::new(1, 0, 0), vec![IVec3::ZERO]);
+        let bid = world.spawn(BlockKind::Mirror, IVec3::new(1, 0, 1), vec![IVec3::ZERO]);
+        // Wall at (2, 0, 1) blocking the top mirror B
+        let wid = world.spawn(BlockKind::Wall, IVec3::new(2, 0, 1), vec![IVec3::ZERO]);
+        world.body_mut(wid).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
+
+        let mut engine = TurnEngine::new(world);
+        assert_eq!(engine.apply(PlayerAction::Forward), TurnResult::Ok);
+
+        // Push was blocked! Positions unchanged
+        assert_eq!(engine.world.body(pid).unwrap().anchor, IVec3::new(0, 0, 0));
+        assert_eq!(engine.world.body(aid).unwrap().anchor, IVec3::new(1, 0, 0));
+        assert_eq!(engine.world.body(bid).unwrap().anchor, IVec3::new(1, 0, 1));
+    }
+
+    #[test]
+    fn fixed_block_on_top_prevents_sliding() {
+        let mut world = World::new();
+        for x in 0..5 {
+            let fid = world.spawn(BlockKind::Floor, IVec3::new(x, 0, -1), vec![IVec3::ZERO]);
+            world.body_mut(fid).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
+        }
+        let pid = world.spawn(BlockKind::Player, IVec3::new(0, 0, 0), vec![IVec3::ZERO]);
+        world.body_mut(pid).unwrap().orientation = CubeRot::from_facing_2d(IVec3::X);
+
+        let aid = world.spawn(BlockKind::Pushable, IVec3::new(1, 0, 0), vec![IVec3::ZERO]);
+        // Fixed block resting on top of A
+        let bid = world.spawn(BlockKind::Mirror, IVec3::new(1, 0, 1), vec![IVec3::ZERO]);
+        world.body_mut(bid).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
+
+        let mut engine = TurnEngine::new(world);
+        assert_eq!(engine.apply(PlayerAction::Forward), TurnResult::Ok);
+
+        // Immovable fixed block on top prevented A from sliding
+        assert_eq!(engine.world.body(pid).unwrap().anchor, IVec3::new(0, 0, 0));
+        assert_eq!(engine.world.body(aid).unwrap().anchor, IVec3::new(1, 0, 0));
+    }
+
+    #[test]
+    fn gravity_state_triggered_falling() {
+        let mut test_world = World::new();
+        let fid = test_world.spawn(BlockKind::Floor, IVec3::new(2, 0, -1), vec![IVec3::ZERO]);
+        test_world.body_mut(fid).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
+        let cid = test_world.spawn(BlockKind::Pushable, IVec3::new(2, 0, 3), vec![IVec3::ZERO]);
+        test_world.sync_grid();
+
+        assert_eq!(test_world.body(cid).unwrap().anchor, IVec3::new(2, 0, 3));
+        let settled = resolve_gravity_settlement(&mut test_world);
+        assert!(settled);
+        // Landed on floor at z = 0 (since floor is at z = -1)
+        assert_eq!(test_world.body(cid).unwrap().anchor, IVec3::new(2, 0, 0));
+    }
+
+    #[test]
+    fn stacked_falling_in_lockstep() {
+        let mut world = World::new();
+        let fid = world.spawn(BlockKind::Floor, IVec3::new(2, 0, -1), vec![IVec3::ZERO]);
+        world.body_mut(fid).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
+
+        let aid = world.spawn(BlockKind::Pushable, IVec3::new(2, 0, 4), vec![IVec3::ZERO]);
+        let bid = world.spawn(BlockKind::Mirror, IVec3::new(2, 0, 5), vec![IVec3::ZERO]);
+        world.sync_grid();
+
+        let settled = resolve_gravity_settlement(&mut world);
+        assert!(settled);
+        // A lands on ground at z = 0, B lands on A at z = 1
+        assert_eq!(world.body(aid).unwrap().anchor, IVec3::new(2, 0, 0));
+        assert_eq!(world.body(bid).unwrap().anchor, IVec3::new(2, 0, 1));
     }
 }

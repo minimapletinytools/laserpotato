@@ -61,11 +61,11 @@ const BUNDLED_LEVELS: &[(&str, &str, &str, &str, &str)] = &[
         include_str!("../../levels/default_puzzle.json"),
     ),
     (
-        "puzzle_1788232299",
+        "simple_2",
         "3. Laser Grid",
         "Complex grid navigation with precision block pushing and multiple reflection paths.",
         "Advanced",
-        include_str!("../../levels/puzzle_1788232299.json"),
+        include_str!("../../levels/simple_2.json"),
     ),
 ];
 
