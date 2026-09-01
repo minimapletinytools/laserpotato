@@ -407,7 +407,8 @@ pub fn setup_render_assets(
             alpha_mode: AlphaMode::Blend,
             perceptual_roughness: 0.05,
             emissive: LinearRgba::new(0.15, 0.50, 1.30, 1.0),
-            double_sided: true,
+            cull_mode: Some(bevy::render::render_resource::Face::Back),
+            double_sided: false,
             ..default()
         }),
         moveable_goal_mat: materials.add(StandardMaterial {
@@ -467,7 +468,8 @@ pub fn setup_render_assets(
             alpha_mode: AlphaMode::Blend,
             perceptual_roughness: 0.15,
             emissive: LinearRgba::new(0.04, 0.08, 0.20, 1.0),
-            double_sided: true,
+            cull_mode: Some(bevy::render::render_resource::Face::Back),
+            double_sided: false,
             ..default()
         }),
         goal_mat: materials.add(StandardMaterial {
@@ -522,9 +524,9 @@ pub fn setup_render_assets(
         ghost_above_mat: materials.add(StandardMaterial {
             base_color: Color::srgba(0.85, 0.92, 1.0, 0.15),
             alpha_mode: AlphaMode::Blend,
-            perceptual_roughness: 0.1,
-            cull_mode: None,
-            double_sided: true,
+            unlit: true,
+            cull_mode: Some(bevy::render::render_resource::Face::Back),
+            double_sided: false,
             ..default()
         }),
 
@@ -532,9 +534,9 @@ pub fn setup_render_assets(
         fade_below_mat: materials.add(StandardMaterial {
             base_color: Color::srgba(0.40, 0.45, 0.55, 0.35),
             alpha_mode: AlphaMode::Blend,
-            perceptual_roughness: 0.5,
-            cull_mode: None,
-            double_sided: true,
+            unlit: true,
+            cull_mode: Some(bevy::render::render_resource::Face::Back),
+            double_sided: false,
             ..default()
         }),
     });
@@ -1226,13 +1228,17 @@ pub fn cube_rot_to_quat(rot: &CubeRot) -> Quat {
 // Body sync
 // ---------------------------------------------------------------------------
 
+#[derive(Component)]
+pub struct DirectionalIndicator;
+
 /// Every frame: update existing entity transforms, spawn new bodies, despawn
 /// removed bodies, and assign materials based on moveable vs fixed status.
 pub fn sync_bodies(
     mut commands: Commands,
     game: Res<GameState>,
     assets: Res<RenderAssets>,
-    mut query: Query<(Entity, &SimBodyLink, &mut Transform, &mut Mesh3d, &mut MeshMaterial3d<StandardMaterial>)>,
+    mut query: Query<(Entity, &SimBodyLink, &mut Transform, &mut Mesh3d, &mut MeshMaterial3d<StandardMaterial>, Option<&Children>)>,
+    mut indicator_query: Query<&mut Visibility, With<DirectionalIndicator>>,
     app_mode: Option<Res<State<AppMode>>>,
     editor: Option<Res<crate::editor::EditorState>>,
 ) {
@@ -1271,7 +1277,7 @@ pub fn sync_bodies(
     };
 
     // Update existing entities (position, rotation, mesh, and dynamic material).
-    for (entity, link, mut transform, mut mesh_handle, mut mat_handle) in &mut query {
+    for (entity, link, mut transform, mut mesh_handle, mut mat_handle, children_opt) in &mut query {
         if let Some(body) = world.body(link.0) {
             transform.translation = sim_to_bevy(body.anchor);
             transform.rotation = cube_rot_to_quat(&body.orientation);
@@ -1287,6 +1293,15 @@ pub fn sync_bodies(
             let visual_spec = BlockVisualSpec::from_body(body, &ctx);
             mesh_handle.0 = assets.resolve_mesh(&visual_spec.mesh);
             mat_handle.0 = assets.resolve_material(&visual_spec.material);
+
+            let is_ghosted = matches!(visual_spec.material.opacity, OpacityLayer::GhostAboveLayer | OpacityLayer::FadeBelowLayer);
+            if let Some(children) = children_opt {
+                for child in children.iter() {
+                    if let Ok(mut vis) = indicator_query.get_mut(child) {
+                        *vis = if is_ghosted { Visibility::Hidden } else { Visibility::Inherited };
+                    }
+                }
+            }
 
             seen.insert(link.0);
         } else {
@@ -1326,23 +1341,30 @@ pub fn sync_bodies(
             transform,
         ));
 
+        let is_ghosted = matches!(visual_spec.material.opacity, OpacityLayer::GhostAboveLayer | OpacityLayer::FadeBelowLayer);
+        let indicator_vis = if is_ghosted { Visibility::Hidden } else { Visibility::Inherited };
+
         // Directional child indicators (forward in Bevy local space is -Z).
         match body.kind {
             BlockKind::Player => {
                 entity_cmds.with_children(|parent| {
                     parent.spawn((
+                        DirectionalIndicator,
+                        indicator_vis,
                         Mesh3d(assets.indicator_mesh.clone()),
                         MeshMaterial3d(assets.player_indicator_mat.clone()),
-                        Transform::from_xyz(0.0, 0.0, -0.45),
+                        Transform::from_xyz(0.0, 0.0, -0.455),
                     ));
                 });
             }
             BlockKind::LaserSource => {
                 entity_cmds.with_children(|parent| {
                     parent.spawn((
+                        DirectionalIndicator,
+                        indicator_vis,
                         Mesh3d(assets.indicator_mesh.clone()),
                         MeshMaterial3d(assets.laser_indicator_mat.clone()),
-                        Transform::from_xyz(0.0, 0.0, -0.45),
+                        Transform::from_xyz(0.0, 0.0, -0.455),
                     ));
                 });
             }
