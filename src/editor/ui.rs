@@ -1193,6 +1193,7 @@ pub fn update_editor_ui_system(
         Option<&UncombineButton>,
         Option<&ToggleFixedButton>,
     )>,
+    mut z_btn_query: Query<&mut Node, Or<(With<ZLayerDecButton>, With<ZLayerIncButton>)>>,
 ) {
     // Show UI only in Editor mode
     for mut vis in &mut root_query {
@@ -1205,6 +1206,15 @@ pub fn update_editor_ui_system(
 
     if *app_mode.get() != AppMode::Editor {
         return;
+    }
+
+    let is_stack_mode = editor.z_mode == crate::editor::ZPlacementMode::StackOnTop;
+    for mut node in &mut z_btn_query {
+        node.display = if is_stack_mode {
+            Display::None
+        } else {
+            Display::Flex
+        };
     }
 
     // 1. Update text elements (Preview, Z layer, Inspector)
@@ -1236,8 +1246,12 @@ pub fn update_editor_ui_system(
                 text.0 = "Select-Only Mode [Esc]".into();
             }
         } else if z_layer_opt.is_some() {
-            let locked_tag = if editor.is_layer_locked(editor.current_z) { " [LOCKED]" } else { "" };
-            text.0 = format!("Layer Z: {}{}", editor.current_z, locked_tag);
+            if is_stack_mode {
+                text.0 = format!("floor z = {}", editor.floorplan_z);
+            } else {
+                let locked_tag = if editor.is_layer_locked(editor.current_z) { " [LOCKED]" } else { "" };
+                text.0 = format!("Layer Z: {}{}", editor.current_z, locked_tag);
+            }
         } else if inspector_opt.is_some() {
             if selected_count == 0 {
                 text.0 = "No block selected.\nClick or drag to select blocks in the grid.".into();

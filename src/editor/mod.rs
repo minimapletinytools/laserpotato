@@ -1902,4 +1902,15 @@ mod tests {
         // Move group in Y direction (+0, +2, 0) -> valid
         assert!(can_move_selection_by(&world, &sel, IVec3::new(0, 2, 0)));
     }
+
+    #[test]
+    fn stack_mode_floor_z_display_test() {
+        let mut editor = EditorState::default();
+        assert_eq!(editor.z_mode, ZPlacementMode::StackOnTop);
+        assert_eq!(editor.floorplan_z, -1);
+
+        // Floor Z is view-only in stack mode and comes from floorplan_z
+        editor.floorplan_z = -2;
+        assert_eq!(editor.floorplan_z, -2);
+    }
 }
