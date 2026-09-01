@@ -1042,7 +1042,7 @@ pub fn sync_bodies(
                     mesh_handle.0 = if is_moveable { assets.rounded_pyramid_mesh.clone() } else { assets.pyramid_mesh.clone() };
                 }
                 BlockKind::Player => {
-                    mat_handle.0 = if game.engine.is_lost() {
+                    mat_handle.0 = if show_preview && game.engine.is_lost() {
                         assets.player_burnt_mat.clone()
                     } else {
                         assets.player_mat.clone()
@@ -1128,7 +1128,7 @@ pub fn sync_bodies(
                 (mesh, mat)
             }
             BlockKind::Player => {
-                let mat = if game.engine.is_lost() {
+                let mat = if show_preview && game.engine.is_lost() {
                     assets.player_burnt_mat.clone()
                 } else {
                     assets.player_mat.clone()

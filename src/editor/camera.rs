@@ -93,7 +93,7 @@ pub fn camera_controller_system(
         controller.yaw = controller.target_yaw;
     }
 
-    // 3. Play Mode Mouse Drag Tilting (at most 25 degrees, snaps back on release)
+    // 3. Play Mode Mouse Drag Tilting (at most 25 degrees with soft edge tapering, snaps back on release)
     let max_tilt = 25.0_f32.to_radians();
     if is_play_or_playback {
         let dragging = mouse_button.pressed(MouseButton::Left)
@@ -102,13 +102,11 @@ pub fn camera_controller_system(
 
         if dragging {
             for motion in mouse_motion.read() {
-                // Horizontal mouse movement shifts yaw
-                controller.tilt_yaw -= motion.delta.x * 0.006;
-                // Vertical mouse movement shifts pitch
-                controller.tilt_pitch += motion.delta.y * 0.006;
+                // Horizontal mouse movement shifts yaw with smooth edge tapering
+                apply_tapered_tilt(&mut controller.tilt_yaw, -motion.delta.x * 0.006, max_tilt);
+                // Vertical mouse movement shifts pitch with smooth edge tapering
+                apply_tapered_tilt(&mut controller.tilt_pitch, motion.delta.y * 0.006, max_tilt);
             }
-            controller.tilt_yaw = controller.tilt_yaw.clamp(-max_tilt, max_tilt);
-            controller.tilt_pitch = controller.tilt_pitch.clamp(-max_tilt, max_tilt);
         } else {
             // Smoothly snap back to original orientation (0.0 offset)
             let snap_speed = 14.0 * time.delta_secs();
@@ -168,6 +166,23 @@ pub fn camera_controller_system(
     transform.look_at(controller.target, Vec3::Y);
 }
 
+/// Smoothly applies an incremental mouse drag rotation `delta` to `current`,
+/// tapering off the response smoothly as `current` approaches `max_limit` (instead of an abrupt hard stop).
+pub fn apply_tapered_tilt(current: &mut f32, delta: f32, max_limit: f32) {
+    if delta == 0.0 || max_limit <= 0.0 {
+        return;
+    }
+    let ratio = (current.abs() / max_limit).clamp(0.0, 1.0);
+    // When pushing further towards the edge in the current direction, smoothly taper off resistance:
+    let resistance = if (delta > 0.0 && *current > 0.0) || (delta < 0.0 && *current < 0.0) {
+        (1.0 - ratio).powf(1.3)
+    } else {
+        // Moving back towards center: full 1.0 responsiveness
+        1.0
+    };
+    *current = (*current + delta * resistance).clamp(-max_limit, max_limit);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -196,5 +211,27 @@ mod tests {
 
         assert!(controller.tilt_yaw.abs() < 0.001);
         assert!(controller.tilt_pitch.abs() < 0.001);
+    }
+
+    #[test]
+    fn camera_controller_tilt_tapering() {
+        let max_tilt = 25.0_f32.to_radians();
+        let mut angle = 0.0_f32;
+
+        // At center (0.0), a delta of 0.01 is fully applied
+        apply_tapered_tilt(&mut angle, 0.01, max_tilt);
+        assert!((angle - 0.01).abs() < 1e-5);
+
+        // Near edge (95% of max), the same delta produces significantly less movement (cushioned taper)
+        let mut edge_angle = max_tilt * 0.95;
+        let start_edge = edge_angle;
+        apply_tapered_tilt(&mut edge_angle, 0.01, max_tilt);
+        let edge_delta = edge_angle - start_edge;
+        assert!(edge_delta < 0.002); // Tapered down by >80%
+
+        // Moving back towards 0 from edge has immediate full responsiveness
+        let prev = edge_angle;
+        apply_tapered_tilt(&mut edge_angle, -0.01, max_tilt);
+        assert!((prev - edge_angle - 0.01).abs() < 1e-5);
     }
 }
