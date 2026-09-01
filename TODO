@@ -103,10 +103,32 @@ DONE-improve frame 0 state computations
     -we save state -0.5 but then show state 0, but then what happens when we want to change state? do we change from state 0 or -0.5
     -state after returning from test mode needs to reset back to state 0, or state -0.5 and recompute
 
+DONE-right after placinga. bolk,c it does not select it. you can't not select stuff in block placement mode
+DONE-in z layer mode, after somethingis selected, click by drag moves the entire selection (only if new position for all blocks is allowed)
+DONE-blocks that can't be toggled immovable should have the toggle immoveable button grayed out
 
--right after placinga. bolk,c it does not select it. you can't not select stuff in block placement mode
--in z layer mode, after somethingis selected, click by drag moves the entire selection (only if new position for all blocks is allowed)
--blocks that can't be toggled immovable should have the toggle immoveable button grayed out
+
+-add slight mouse drag camera tilting when in play mode so you can shift the camear around just a bit to see form diff angles (snaps back to orig view on release, at most 25 degrees rotation I guess)
+-the prveiwe on/off doesn't seem to do anything, it always shows preview on, also the button state dosent change, only the status bar at the bottom shows it.
+
+
+-in z layer mode there should be agrid line drawn over the layer you are working on
+-in z layer mode, other stuff should be made transparent
+    -I tihnk we need a render thingy for blocks allowing you t olayer modifiers on, this is both for the editor and for play mode renderin.g cany ou think of some dieas?
+
+
+-start a list of block movement rules for documentation, think carefull about this, we want to document it in such a way so that 
+  -the level advance function is sensible and predictable
+  -the level solver thingy can somewhat understand these rules for maknig heuristics
+  -there will be a level analyzer in the future as well, which will look for "interesting moves" which depend on how these rules are applied or if applied together
+
+-new movement rules
+    -moveable blocks move together when stacked
+    -if a moveable block has nothing underneath it it should fall
+-there should be an orientation picker rather than the rotate buttons... although 48 is a lot of rotations.... so skip reflectios and yaw or osmething, or have dropdown allowing those to be shown, keep the manual rotatino buttons ofc.
+
+
+
 -block inspector in block placement mode shows the block to be placed and changing properties changes the properties of the block to be place (new block instead of block info in this case)
 
 -add undor redo support.. cmd z cmd shift z

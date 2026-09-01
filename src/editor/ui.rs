@@ -75,6 +75,9 @@ pub struct DeleteBlockButton;
 pub struct ActionButton(pub EditorAction);
 
 #[derive(Component)]
+pub struct ActionButtonText(pub EditorAction);
+
+#[derive(Component)]
 pub struct SolverStatusBadge;
 
 #[derive(Component)]
@@ -1158,6 +1161,7 @@ fn spawn_action_btn(parent: &mut ChildSpawnerCommands, action: EditorAction, lab
         ))
         .with_children(|btn| {
             btn.spawn((
+                ActionButtonText(action),
                 Text::new(label),
                 TextFont::from_font_size(12.0),
                 TextColor(TEXT_PRIMARY),
@@ -1374,6 +1378,7 @@ pub fn update_editor_status_and_modal_ui_system(
         Option<&FloorplanHeightLabel>,
         Option<&FloorplanZLabel>,
         Option<&FloorplanLockToggleText>,
+        Option<&ActionButtonText>,
     )>,
     mut action_btns_query: Query<(&ActionButton, &mut BackgroundColor)>,
     mut modal_query: Query<&mut Visibility, (With<FloorplanModal>, Without<EditorRootUi>, Without<ValidationErrorBanner>)>,
@@ -1410,7 +1415,7 @@ pub fn update_editor_status_and_modal_ui_system(
     }
 
     // 3. Update Text elements
-    for (mut text, mut color_opt, solver_opt, toast_opt, banner_opt, fp_w_opt, fp_h_opt, fp_z_opt, fp_lock_opt) in &mut text_query {
+    for (mut text, mut color_opt, solver_opt, toast_opt, banner_opt, fp_w_opt, fp_h_opt, fp_z_opt, fp_lock_opt, action_btn_text_opt) in &mut text_query {
         if solver_opt.is_some() {
             text.0 = format!("Solver: {}", editor.solver_status);
             if let Some(color) = &mut color_opt {
@@ -1453,10 +1458,18 @@ pub fn update_editor_status_and_modal_ui_system(
             } else {
                 format!("Lock Floor Layer (Z={})", editor.floorplan_z)
             };
+        } else if let Some(btn_action) = action_btn_text_opt {
+            if btn_action.0 == EditorAction::ToggleFramePreview {
+                text.0 = if editor.show_frame1_preview {
+                    "Preview: ON".into()
+                } else {
+                    "Preview: OFF".into()
+                };
+            }
         }
     }
 
-    // 4. Highlight "Test with Solution" / disable playtest buttons if level is invalid
+    // 4. Highlight action button backgrounds
     for (action_btn, mut bg) in &mut action_btns_query {
         match action_btn.0 {
             EditorAction::TestPlay => {
@@ -1471,6 +1484,9 @@ pub fn update_editor_status_and_modal_ui_system(
             }
             EditorAction::ToggleFloorplanModal => {
                 bg.0 = if editor.floorplan_open { BTN_ACTIVE } else { BTN_NORMAL };
+            }
+            EditorAction::ToggleFramePreview => {
+                bg.0 = if editor.show_frame1_preview { BTN_ACTIVE } else { BTN_NORMAL };
             }
             _ => {}
         }

@@ -10,6 +10,7 @@ use bevy::render::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
 use crate::block_types::BlockKind;
+use crate::editor::AppMode;
 use crate::sim::{BodyId, CubeRot};
 use crate::GameState;
 
@@ -984,17 +985,32 @@ pub fn sync_bodies(
     game: Res<GameState>,
     assets: Res<RenderAssets>,
     mut query: Query<(Entity, &SimBodyLink, &mut Transform, &mut Mesh3d, &mut MeshMaterial3d<StandardMaterial>)>,
+    app_mode: Option<Res<State<AppMode>>>,
+    editor: Option<Res<crate::editor::EditorState>>,
 ) {
     let world = &game.engine.world;
     let mut seen = std::collections::HashSet::new();
     let mut to_despawn = Vec::new();
 
-    let hit_body_ids: std::collections::HashSet<BodyId> = game
-        .engine
-        .laser_state
-        .iter()
-        .filter_map(|seg| seg.hit.as_ref().map(|h| h.body_id))
-        .collect();
+    let show_preview = if let (Some(mode), Some(ed)) = (&app_mode, &editor) {
+        if *mode.get() == AppMode::Editor {
+            ed.show_frame1_preview
+        } else {
+            true
+        }
+    } else {
+        true
+    };
+
+    let hit_body_ids: std::collections::HashSet<BodyId> = if show_preview {
+        game.engine
+            .laser_state
+            .iter()
+            .filter_map(|seg| seg.hit.as_ref().map(|h| h.body_id))
+            .collect()
+    } else {
+        std::collections::HashSet::new()
+    };
 
     // Update existing entities (position, rotation, mesh, and dynamic goal material).
     for (entity, link, mut transform, mut mesh_handle, mut mat_handle) in &mut query {
@@ -1227,6 +1243,8 @@ pub fn sync_lasers(
     mut game: ResMut<GameState>,
     assets: Res<RenderAssets>,
     beams: Query<Entity, With<LaserBeamMarker>>,
+    app_mode: Option<Res<State<AppMode>>>,
+    editor: Option<Res<crate::editor::EditorState>>,
 ) {
     // 1. Live dynamic recalculation of laser raycasts from current world state every frame
     // (active on frame 0, in the level editor, during solution playback, and during playtest)
@@ -1234,6 +1252,13 @@ pub fn sync_lasers(
 
     for entity in &beams {
         commands.entity(entity).despawn();
+    }
+
+    // In Editor mode, respect the Preview ON/OFF toggle:
+    if let (Some(mode), Some(ed)) = (&app_mode, &editor) {
+        if *mode.get() == AppMode::Editor && !ed.show_frame1_preview {
+            return;
+        }
     }
 
     let world = &game.engine.world;
