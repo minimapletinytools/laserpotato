@@ -112,14 +112,28 @@ DONE-in z layer mode there should be agrid line drawn over the layer you are wor
 DONE-in z layer mode, other stuff should be made transparent (looks kinda bad lol)
     -I tihnk we need a render thingy for blocks allowing you t olayer modifiers on, this is both for the editor and for play mode renderin.g cany ou think of some dieas?
 DONE-add undor redo support.. cmd z cmd shift z
+DONE-block inspector in block placement mode shows the block to be placed and changing properties changes the properties of the block to be place (new block instead of block info in this case)
+
+DONE-level structure
+    -allow organization by folder
+    -each level may have multiple versions and solutions
+    -probbaly just 1 folder = 1 level for your own organization sanity...
+    -solving a level manually saves a new solution, aut osolve also does this with adifferent postfix
+    -changing a level indicates existing solutions ar enull, saving ac hanged level deletes old saved solutions
+    -add some save a copy button that makes a new copy of the current level with date prefix or osmething
+
+DONE-try web browser publish and shar ewith anton
+DONE-do some research into building solver
+    -DONE: Documented Draknek & Patrick's Parabox research in docs/solver_puzzle_design.md
+    -Macro move quotient graph & floodfill reachability compression
+    -4 Macro Move Archetypes: Heuristic Inversion (Detour), Irreversible Phase Shift, Spatial Exchange (Nook Parking), Optical Topology Switch
+    -Extensible macro archetype registry for future mechanics (Sensors, Portals, Logic Gates, Polarizers, Fall Triggers)
+    -Composable heuristic framework (trait-based with domain weights)
+    -Automated puzzle quality profiler: Epiphany Score, Load-Bearing Factor, Bottleneck & Choke Point Count, Cheese Detector
+    -Overhaul/rebuild solver from scratch: replace micro-step expansion with macro-move reachability search
 
 
--block inspector in block placement mode shows the block to be placed and changing properties changes the properties of the block to be place (new block instead of block info in this case)
 
--rework left side menu
-    -fix preview (or move preview over to right side menu?)
-    -there should be an orientation picker rather than the rotate buttons... although 48 is a lot of rotations.... so skip reflectios and yaw or osmething, or have dropdown allowing those to be shown, keep the manual rotatino buttons ofc.
-    
 -start a list of block movement rules for documentation, think carefull about this, we want to document it in such a way so that 
   -the level advance function is sensible and predictable
   -the level solver thingy can somewhat understand these rules for maknig heuristics
@@ -129,16 +143,10 @@ DONE-add undor redo support.. cmd z cmd shift z
     -moveable blocks move together when stacked
     -if a moveable block has nothing underneath it it should fall, this is a STATE triggered move rather than a move triggered move, so it will not ahppen on the same subframe as the block underneath it being removed.
 
+-rework left side menu
+    -fix preview (or move preview over to right side menu?)
+    -there should be an orientation picker rather than the rotate buttons... although 48 is a lot of rotations.... so skip reflectios and yaw or osmething, or have dropdown allowing those to be shown, keep the manual rotatino buttons ofc.
 
--level structure
-    -allow organization by folder
-    -each level may have multiple versions and solutions
-    -probbaly just 1 folder = 1 level for your own organization sanity...
-    -solving a level manually saves a new solution, aut osolve also does this with adifferent postfix
-    -changing a level indicates existing solutions ar enull, saving ac hanged level deletes old saved solutions
-    -add some save a copy button that makes a new copy of the current level with date prefix or osmething
-
--try web browser publish and shar ewith anton
 -add a little x y z gizmo at the origin so we can easily tell the level orientation
 -add grid numbers along the x/y=0 axis 
 
@@ -148,14 +156,6 @@ DONE-add undor redo support.. cmd z cmd shift z
 
 
 
--do some research into building solver
-    -DONE: Documented Draknek & Patrick's Parabox research in docs/solver_puzzle_design.md
-    -Macro move quotient graph & floodfill reachability compression
-    -4 Macro Move Archetypes: Heuristic Inversion (Detour), Irreversible Phase Shift, Spatial Exchange (Nook Parking), Optical Topology Switch
-    -Extensible macro archetype registry for future mechanics (Sensors, Portals, Logic Gates, Polarizers, Fall Triggers)
-    -Composable heuristic framework (trait-based with domain weights)
-    -Automated puzzle quality profiler: Epiphany Score, Load-Bearing Factor, Bottleneck & Choke Point Count, Cheese Detector
-    -Overhaul/rebuild solver from scratch: replace micro-step expansion with macro-move reachability search
 
 
 :: TODONE
