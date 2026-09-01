@@ -4,6 +4,53 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Laser Potato</title>
+    <script>
+        // Intercept WASM fetch to stream live download progress to the loading bar
+        const originalFetch = window.fetch;
+        window.fetch = async function(...args) {
+            const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url ? args[0].url : '');
+            if (url.includes('.wasm')) {
+                const response = await originalFetch.apply(this, args);
+                if (!response.body) return response;
+
+                const contentLength = response.headers.get('content-length');
+                const total = contentLength ? parseInt(contentLength, 10) : 0;
+                let loaded = 0;
+
+                const reader = response.body.getReader();
+                const stream = new ReadableStream({
+                    async start(controller) {
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) {
+                                controller.close();
+                                if (window.updateWasmProgress) {
+                                    window.updateWasmProgress(loaded, total, true);
+                                }
+                                break;
+                            }
+                            loaded += value.byteLength;
+                            controller.enqueue(value);
+                            if (window.updateWasmProgress) {
+                                window.updateWasmProgress(loaded, total, false);
+                            }
+                        }
+                    }
+                });
+
+                const headers = new Headers(response.headers);
+                if (!headers.get('content-type')) {
+                    headers.set('content-type', 'application/wasm');
+                }
+                return new Response(stream, {
+                    headers: headers,
+                    status: response.status,
+                    statusText: response.statusText,
+                });
+            }
+            return originalFetch.apply(this, args);
+        };
+    </script>
     <link data-trunk rel="rust" data-bin="play" data-wasm-opt="z" />
     <style>
         * {
@@ -18,7 +65,7 @@
             width: 100vw;
             height: 100vh;
             overflow: hidden;
-            background-color: #0b0d14;
+            background-color: #07090e;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -44,56 +91,128 @@
             outline: none;
         }
 
-        /* Loading indicator shown before WASM initializes */
+        /* Loading Screen Overlay */
         #loading-screen {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background-color: #080a10;
+            background: radial-gradient(circle at 50% 45%, #121826 0%, #06080d 100%);
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            z-index: 10;
-            transition: opacity 0.4s ease-out;
+            z-index: 999;
+            transition: opacity 0.4s ease-out, visibility 0.4s;
         }
 
-        .spinner {
-            width: 48px;
-            height: 48px;
-            border: 4px solid rgba(80, 180, 255, 0.2);
-            border-top: 4px solid #38bdf8;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-bottom: 20px;
+        .loading-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 90%;
+            max-width: 420px;
+            padding: 32px 28px;
+            background: rgba(14, 19, 30, 0.85);
+            border: 1px solid rgba(56, 189, 248, 0.25);
+            border-radius: 16px;
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6), 0 0 24px rgba(56, 189, 248, 0.08);
+            text-align: center;
         }
 
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        /* Glowing Laser Icon */
+        .laser-icon {
+            font-size: 40px;
+            margin-bottom: 12px;
+            animation: pulse-glow 2s infinite ease-in-out;
+            filter: drop-shadow(0 0 12px rgba(56, 189, 248, 0.7));
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { transform: scale(1); filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.5)); }
+            50% { transform: scale(1.08); filter: drop-shadow(0 0 18px rgba(56, 189, 248, 0.9)); }
         }
 
         .title {
-            font-size: 24px;
-            font-weight: 700;
-            letter-spacing: 2px;
+            font-size: 26px;
+            font-weight: 800;
+            letter-spacing: 3px;
             color: #38bdf8;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
+            text-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
         }
 
-        .subtitle {
-            font-size: 14px;
-            color: #8fa0bc;
+        .status-text {
+            font-size: 15px;
+            font-weight: 500;
+            color: #94a3b8;
+            margin-bottom: 22px;
+            min-height: 22px;
+            transition: color 0.3s;
+        }
+
+        /* Progress Bar Container */
+        .progress-container {
+            width: 100%;
+            height: 10px;
+            background-color: rgba(15, 23, 42, 0.9);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            border-radius: 999px;
+            overflow: hidden;
+            position: relative;
+            margin-bottom: 12px;
+        }
+
+        /* Active Fill Bar */
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #0284c7, #38bdf8, #818cf8);
+            background-size: 200% 100%;
+            border-radius: 999px;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.7);
+            transition: width 0.15s ease-out;
+            animation: shimmer 2s infinite linear;
+        }
+
+        @keyframes shimmer {
+            0% { background-position: 100% 0; }
+            100% { background-position: -100% 0; }
+        }
+
+        /* Download Stats Details */
+        .details-row {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            font-size: 12px;
+            color: #64748b;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        }
+
+        .percentage {
+            color: #38bdf8;
+            font-weight: 600;
         }
     </style>
 </head>
 <body>
     <div id="loading-screen">
-        <div class="spinner"></div>
-        <div class="title">LASER POTATO</div>
-        <div class="subtitle">Loading 3D Engine & Puzzles...</div>
+        <div class="loading-card">
+            <div class="laser-icon">⚡🥔⚡</div>
+            <div class="title">LASER POTATO</div>
+            <div id="status-label" class="status-text">Loading potatoes...</div>
+            
+            <div class="progress-container">
+                <div id="progress-bar" class="progress-bar"></div>
+            </div>
+
+            <div class="details-row">
+                <span id="bytes-label">Downloading game...</span>
+                <span id="percent-label" class="percentage">0%</span>
+            </div>
+        </div>
     </div>
 
     <div id="canvas-container">
@@ -101,19 +220,95 @@
     </div>
 
     <script>
-        // Dismiss loading screen when Bevy renders its first canvas frame
+        const statusLabel = document.getElementById('status-label');
+        const progressBar = document.getElementById('progress-bar');
+        const bytesLabel = document.getElementById('bytes-label');
+        const percentLabel = document.getElementById('percent-label');
+        const loadingScreen = document.getElementById('loading-screen');
+
+        const funPhrases = [
+            "Planting potatoes in the 3D grid...",
+            "Harvesting fresh laser potatoes...",
+            "Polishing optical mirrors...",
+            "Charging laser crystals...",
+            "Arranging pushable crates...",
+            "Energizing goal pyramids...",
+            "Baking potato shaders...",
+            "Aligning laser optics...",
+            "Starting game engine..."
+        ];
+
+        let lastPhraseIndex = 0;
+        const phraseInterval = setInterval(() => {
+            if (!progressBar || progressBar.style.width === '100%') return;
+            lastPhraseIndex = (lastPhraseIndex + 1) % (funPhrases.length - 1);
+            if (statusLabel && !statusLabel.dataset.complete) {
+                statusLabel.textContent = funPhrases[lastPhraseIndex];
+            }
+        }, 2200);
+
+        window.updateWasmProgress = function(loaded, total, isDone) {
+            const loadedMB = (loaded / (1024 * 1024)).toFixed(1);
+            if (total > 0) {
+                const totalMB = (total / (1024 * 1024)).toFixed(1);
+                const percent = Math.min(100, Math.round((loaded / total) * 100));
+                
+                progressBar.style.width = percent + '%';
+                percentLabel.textContent = percent + '%';
+                bytesLabel.textContent = `${loadedMB} / ${totalMB} MB`;
+
+                if (percent < 25) {
+                    statusLabel.textContent = "Loading potatoes...";
+                } else if (percent < 50) {
+                    statusLabel.textContent = "Polishing optical mirrors...";
+                } else if (percent < 75) {
+                    statusLabel.textContent = "Charging laser crystals...";
+                } else if (percent < 98) {
+                    statusLabel.textContent = "Baking potato shaders...";
+                }
+            } else {
+                // Unknown total length (e.g. streaming gzip)
+                bytesLabel.textContent = `${loadedMB} MB downloaded`;
+                progressBar.style.width = '65%';
+            }
+
+            if (isDone) {
+                clearInterval(phraseInterval);
+                statusLabel.dataset.complete = "true";
+                statusLabel.textContent = "Initializing 3D World & Engine...";
+                progressBar.style.width = '100%';
+                percentLabel.textContent = '100%';
+            }
+        };
+
+        function hideLoadingScreen() {
+            clearInterval(phraseInterval);
+            if (loadingScreen && loadingScreen.style.display !== 'none') {
+                loadingScreen.style.opacity = '0';
+                setTimeout(() => {
+                    loadingScreen.style.display = 'none';
+                    loadingScreen.remove();
+                }, 400);
+            }
+        }
+
+        // Dismiss when Trunk signals completion or canvas starts rendering
+        window.addEventListener('TrunkApplicationStarted', hideLoadingScreen);
+
         const observer = new MutationObserver(() => {
             const canvas = document.getElementById('bevy-canvas');
             if (canvas && (canvas.width > 0 || canvas.getAttribute('width'))) {
-                const loader = document.getElementById('loading-screen');
-                if (loader) {
-                    loader.style.opacity = '0';
-                    setTimeout(() => loader.remove(), 400);
-                }
+                hideLoadingScreen();
                 observer.disconnect();
             }
         });
         observer.observe(document.body, { attributes: true, childList: true, subtree: true });
+
+        // Fallback max timeout (e.g. if events were missed)
+        setTimeout(() => {
+            const canvas = document.getElementById('bevy-canvas');
+            if (canvas && canvas.width > 0) hideLoadingScreen();
+        }, 12000);
     </script>
 </body>
 </html>
