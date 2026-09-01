@@ -52,6 +52,7 @@ pub enum EditorAction {
     RotateViewCcw,
     RotateViewCw,
     AttemptSolve,
+    AnalyzeQuality,
     TestPlay,
     TestWithSolution,
 }
@@ -159,6 +160,16 @@ pub struct EditorState {
     pub solution_picker_open: bool,
     /// Flag indicating that the solution picker list needs refreshing in the UI.
     pub solution_picker_dirty: bool,
+    /// Background puzzle quality analyzer worker receiver.
+    pub analyzer_rx: Option<Arc<Mutex<Receiver<(u64, crate::solver::PuzzleProfile)>>>>,
+    /// Level hash at time quality analyzer was launched.
+    pub analyzing_hash: Option<u64>,
+    /// Latest computed puzzle quality & epiphany profile.
+    pub puzzle_profile: Option<crate::solver::PuzzleProfile>,
+    /// Whether the quality analysis modal is currently open.
+    pub quality_modal_open: bool,
+    /// Flag indicating that the quality analysis modal contents need refreshing in the UI.
+    pub quality_modal_dirty: bool,
     /// Whether the current playtest win has already been recorded.
     pub playtest_win_recorded: bool,
     /// Playback speed multiplier (default 1.0 = 400ms per step).
@@ -207,6 +218,11 @@ impl Default for EditorState {
             solutions: Vec::new(),
             solution_picker_open: false,
             solution_picker_dirty: true,
+            analyzer_rx: None,
+            analyzing_hash: None,
+            puzzle_profile: None,
+            quality_modal_open: false,
+            quality_modal_dirty: true,
             playtest_win_recorded: false,
             playback_speed: 1.0,
             last_saved_hash: 0,
@@ -492,6 +508,7 @@ impl Plugin for EditorPlugin {
                     ui::update_editor_status_and_modal_ui_system,
                     ui::update_file_picker_ui_system,
                     ui::update_solution_picker_ui_system,
+                    ui::update_quality_modal_ui_system,
                     update_palette_3d_preview,
                     background_solver_poll_system,
                     draw_editor_selection_gizmos,
@@ -506,6 +523,7 @@ impl Plugin for EditorPlugin {
                     editor_button_clicks_system,
                     file_picker_button_clicks_system,
                     solution_picker_button_clicks_system,
+                    ui::quality_modal_interaction_system,
                 )
                     .run_if(in_state(AppMode::Editor)),
             );
@@ -1639,6 +1657,27 @@ fn editor_button_clicks_system(
                         let _ = tx.send((current_hash, result));
                     });
                 }
+                EditorAction::AnalyzeQuality => {
+                    if let Some(err) = &game.engine.validation_error {
+                        editor.toast(format!("Cannot analyze invalid level: {}", err));
+                        return;
+                    }
+                    if editor.analyzer_rx.is_some() {
+                        editor.toast("Quality analyzer is already running...");
+                        return;
+                    }
+                    let current_hash = compute_level_hash(&game.engine.world);
+                    let world_clone = game.engine.world.clone();
+                    let (tx, rx) = mpsc::channel();
+                    editor.analyzer_rx = Some(Arc::new(Mutex::new(rx)));
+                    editor.analyzing_hash = Some(current_hash);
+                    editor.toast("Analyzing puzzle quality in background...");
+
+                    std::thread::spawn(move || {
+                        let profile = solver::analyze_puzzle(&world_clone);
+                        let _ = tx.send((current_hash, profile));
+                    });
+                }
                 EditorAction::TestPlay => {
                     match game.engine.start_playtest() {
                         Ok(()) => {
@@ -2058,6 +2097,31 @@ fn background_solver_poll_system(
             editor.cached_solution = None;
         }
     }
+
+    // 2. Poll background quality analyzer worker
+    let analyzer_result_pair = if let Some(rx_arc) = &editor.analyzer_rx {
+        if let Ok(rx) = rx_arc.lock() {
+            rx.try_recv().ok()
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    if let Some((analyzed_hash, profile)) = analyzer_result_pair {
+        editor.analyzer_rx = None;
+        let current_hash = compute_level_hash(&game.engine.world);
+
+        if analyzed_hash == current_hash {
+            editor.puzzle_profile = Some(profile);
+            editor.quality_modal_open = true;
+            editor.quality_modal_dirty = true;
+            editor.toast("Puzzle Quality Analysis complete!");
+        } else {
+            editor.toast("Level modified during analysis. Invalidated.");
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2228,6 +2292,15 @@ fn editor_keyboard_shortcuts_system(
             if keys.just_pressed(KeyCode::Escape) {
                 editor.solution_picker_open = false;
                 editor.toast("Cancelled solution picker [Esc].");
+                return;
+            }
+            return;
+        }
+
+        if editor.quality_modal_open {
+            if keys.just_pressed(KeyCode::Escape) {
+                editor.quality_modal_open = false;
+                editor.toast("Closed quality analysis report [Esc].");
                 return;
             }
             return;
@@ -2826,5 +2899,30 @@ mod tests {
         // 3. Reset orientation
         editor.placement_orientation = crate::sim::CubeRot::IDENTITY;
         assert_eq!(editor.placement_orientation, crate::sim::CubeRot::IDENTITY);
+    }
+
+    #[test]
+    fn quality_analysis_flow_and_modal_test() {
+        let mut editor = EditorState::default();
+        let world = crate::level::test_level();
+
+        // 1. Analyze puzzle quality directly
+        let profile = crate::solver::analyze_puzzle(&world);
+        assert!(profile.is_solvable);
+        assert_eq!(profile.macro_steps, 5);
+
+        // 2. Set profile into editor state and open modal
+        editor.puzzle_profile = Some(profile.clone());
+        editor.quality_modal_open = true;
+        editor.quality_modal_dirty = true;
+
+        assert!(editor.quality_modal_open);
+        assert!(editor.puzzle_profile.is_some());
+
+        // 3. Select redundant blocks action if any
+        if !profile.redundant_bodies.is_empty() {
+            editor.selected_body_ids = profile.redundant_bodies.clone();
+            assert_eq!(editor.selected_body_ids, profile.redundant_bodies);
+        }
     }
 }
