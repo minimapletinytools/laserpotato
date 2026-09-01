@@ -33,7 +33,25 @@ pub struct ZLayerLabelText;
 pub struct InspectorPanel;
 
 #[derive(Component)]
+pub struct InspectorHeaderTitle;
+
+#[derive(Component)]
 pub struct InspectorText;
+
+#[derive(Component)]
+pub struct CopyAndPlaceButton;
+
+#[derive(Component)]
+pub struct ResetPlacementOrientationButton;
+
+#[derive(Component)]
+pub struct SelectionOnlyControl;
+
+#[derive(Component)]
+pub struct PlacementOnlyControl;
+
+#[derive(Component)]
+pub struct TransformControlsRow;
 
 #[derive(Component)]
 pub struct RotateCwButton;
@@ -1316,7 +1334,7 @@ pub fn setup_editor_ui(mut commands: Commands) {
                     });
 
                 // -----------------------------------------------------------
-                // RIGHT FLOATING INSPECTOR PANEL (Visible when block is selected)
+                // RIGHT FLOATING INSPECTOR PANEL
                 // -----------------------------------------------------------
                 workspace
                     .spawn((
@@ -1332,6 +1350,7 @@ pub fn setup_editor_ui(mut commands: Commands) {
                     ))
                     .with_children(|inspector| {
                         inspector.spawn((
+                            InspectorHeaderTitle,
                             Text::new("BLOCK INSPECTOR"),
                             TextFont::from_font_size(13.0),
                             TextColor(TEXT_PRIMARY),
@@ -1344,13 +1363,66 @@ pub fn setup_editor_ui(mut commands: Commands) {
                             TextColor(TEXT_MUTED),
                         ));
 
+                        // Copy and Place Button (Visible when 1+ blocks selected)
+                        inspector
+                            .spawn((
+                                CopyAndPlaceButton,
+                                SelectionOnlyControl,
+                                Button,
+                                Node {
+                                    width: Val::Percent(100.0),
+                                    padding: UiRect::axes(Val::Px(8.0), Val::Px(6.0)),
+                                    justify_content: JustifyContent::Center,
+                                    align_items: AlignItems::Center,
+                                    border: UiRect::all(Val::Px(1.5)),
+                                    ..default()
+                                },
+                                BackgroundColor(Color::srgba(0.12, 0.40, 0.65, 0.95)),
+                                BorderColor::all(Color::srgb(0.35, 0.85, 1.0)),
+                            ))
+                            .with_children(|btn| {
+                                btn.spawn((
+                                    Text::new("Copy & Place"),
+                                    TextFont::from_font_size(12.0),
+                                    TextColor(Color::srgb(1.0, 1.0, 1.0)),
+                                ));
+                            });
+
+                        // Reset Placement Orientation Button (Visible when in placement mode)
+                        inspector
+                            .spawn((
+                                ResetPlacementOrientationButton,
+                                PlacementOnlyControl,
+                                Button,
+                                Node {
+                                    width: Val::Percent(100.0),
+                                    padding: UiRect::axes(Val::Px(8.0), Val::Px(6.0)),
+                                    justify_content: JustifyContent::Center,
+                                    align_items: AlignItems::Center,
+                                    border: UiRect::all(Val::Px(1.0)),
+                                    ..default()
+                                },
+                                BackgroundColor(BTN_NORMAL),
+                                BorderColor::all(Color::srgba(0.35, 0.45, 0.60, 0.6)),
+                            ))
+                            .with_children(|btn| {
+                                btn.spawn((
+                                    Text::new("Reset Orientation"),
+                                    TextFont::from_font_size(11.0),
+                                    TextColor(TEXT_PRIMARY),
+                                ));
+                            });
+
                         // 3D Pitch (World X-axis tilt)
                         inspector
-                            .spawn(Node {
-                                width: Val::Percent(100.0),
-                                column_gap: Val::Px(6.0),
-                                ..default()
-                            })
+                            .spawn((
+                                TransformControlsRow,
+                                Node {
+                                    width: Val::Percent(100.0),
+                                    column_gap: Val::Px(6.0),
+                                    ..default()
+                                },
+                            ))
                             .with_children(|row| {
                                 row.spawn((
                                     RotateXPosButton,
@@ -1395,11 +1467,14 @@ pub fn setup_editor_ui(mut commands: Commands) {
 
                         // 3D Roll (World Y-axis tilt)
                         inspector
-                            .spawn(Node {
-                                width: Val::Percent(100.0),
-                                column_gap: Val::Px(6.0),
-                                ..default()
-                            })
+                            .spawn((
+                                TransformControlsRow,
+                                Node {
+                                    width: Val::Percent(100.0),
+                                    column_gap: Val::Px(6.0),
+                                    ..default()
+                                },
+                            ))
                             .with_children(|row| {
                                 row.spawn((
                                     RotateYPosButton,
@@ -1444,11 +1519,14 @@ pub fn setup_editor_ui(mut commands: Commands) {
 
                         // 2D Rotation Controls (Yaw / Z-axis)
                         inspector
-                            .spawn(Node {
-                                width: Val::Percent(100.0),
-                                column_gap: Val::Px(6.0),
-                                ..default()
-                            })
+                            .spawn((
+                                TransformControlsRow,
+                                Node {
+                                    width: Val::Percent(100.0),
+                                    column_gap: Val::Px(6.0),
+                                    ..default()
+                                },
+                            ))
                             .with_children(|row| {
                                 row.spawn((
                                     RotateCcwButton,
@@ -1493,11 +1571,14 @@ pub fn setup_editor_ui(mut commands: Commands) {
 
                         // Spatial Reflection Controls
                         inspector
-                            .spawn(Node {
-                                width: Val::Percent(100.0),
-                                column_gap: Val::Px(6.0),
-                                ..default()
-                            })
+                            .spawn((
+                                TransformControlsRow,
+                                Node {
+                                    width: Val::Percent(100.0),
+                                    column_gap: Val::Px(6.0),
+                                    ..default()
+                                },
+                            ))
                             .with_children(|row| {
                                 row.spawn((
                                     ReflectXButton,
@@ -1543,6 +1624,7 @@ pub fn setup_editor_ui(mut commands: Commands) {
                         // Property Toggle Button
                         inspector
                             .spawn((
+                                TransformControlsRow,
                                 ToggleFixedButton,
                                 Button,
                                 Node {
@@ -1565,6 +1647,7 @@ pub fn setup_editor_ui(mut commands: Commands) {
                         // Combine Mega Block Button
                         inspector
                             .spawn((
+                                SelectionOnlyControl,
                                 CombineButton,
                                 Button,
                                 Node {
@@ -1587,6 +1670,7 @@ pub fn setup_editor_ui(mut commands: Commands) {
                         // Uncombine Button
                         inspector
                             .spawn((
+                                SelectionOnlyControl,
                                 UncombineButton,
                                 Button,
                                 Node {
@@ -1609,6 +1693,7 @@ pub fn setup_editor_ui(mut commands: Commands) {
                         // Delete Block Button
                         inspector
                             .spawn((
+                                SelectionOnlyControl,
                                 DeleteBlockButton,
                                 Button,
                                 Node {
@@ -1688,8 +1773,10 @@ pub fn update_editor_ui_system(
     mut root_query: Query<&mut Visibility, With<EditorRootUi>>,
     mut text_query: Query<(
         &mut Text,
+        Option<&mut TextColor>,
         Option<&PalettePreviewLabel>,
         Option<&ZLayerLabelText>,
+        Option<&InspectorHeaderTitle>,
         Option<&InspectorText>,
     )>,
     mut button_query: Query<(
@@ -1702,6 +1789,36 @@ pub fn update_editor_ui_system(
         Option<&ToggleFixedButton>,
     )>,
     mut z_btn_query: Query<&mut Node, Or<(With<ZLayerDecButton>, With<ZLayerIncButton>)>>,
+    mut selection_ctrl_query: Query<
+        &mut Node,
+        (
+            With<SelectionOnlyControl>,
+            Without<PlacementOnlyControl>,
+            Without<TransformControlsRow>,
+            Without<ZLayerDecButton>,
+            Without<ZLayerIncButton>,
+        ),
+    >,
+    mut placement_ctrl_query: Query<
+        &mut Node,
+        (
+            With<PlacementOnlyControl>,
+            Without<SelectionOnlyControl>,
+            Without<TransformControlsRow>,
+            Without<ZLayerDecButton>,
+            Without<ZLayerIncButton>,
+        ),
+    >,
+    mut transform_ctrl_query: Query<
+        &mut Node,
+        (
+            With<TransformControlsRow>,
+            Without<SelectionOnlyControl>,
+            Without<PlacementOnlyControl>,
+            Without<ZLayerDecButton>,
+            Without<ZLayerIncButton>,
+        ),
+    >,
 ) {
     // Show UI only in Editor mode
     for mut vis in &mut root_query {
@@ -1725,9 +1842,37 @@ pub fn update_editor_ui_system(
         };
     }
 
-    // 1. Update text elements (Preview, Z layer, Inspector)
+    let is_placement_mode = editor.selected_kind.is_some();
     let selected_count = editor.selected_body_ids.len();
-    for (mut text, preview_opt, z_layer_opt, inspector_opt) in &mut text_query {
+    let has_selection = selected_count > 0;
+
+    // Toggle visibility of inspector sub-sections
+    for mut node in &mut selection_ctrl_query {
+        node.display = if has_selection {
+            Display::Flex
+        } else {
+            Display::None
+        };
+    }
+
+    for mut node in &mut placement_ctrl_query {
+        node.display = if is_placement_mode {
+            Display::Flex
+        } else {
+            Display::None
+        };
+    }
+
+    for mut node in &mut transform_ctrl_query {
+        node.display = if is_placement_mode || has_selection {
+            Display::Flex
+        } else {
+            Display::None
+        };
+    }
+
+    // 1. Update text elements (Preview, Z layer, Inspector Header & Details)
+    for (mut text, text_col_opt, preview_opt, z_layer_opt, inspector_header_opt, inspector_opt) in &mut text_query {
         if preview_opt.is_some() {
             if let Some(kind) = editor.selected_kind {
                 let (can_moveable, can_fixed) = editor.allowed_fixed_state(kind);
@@ -1760,9 +1905,52 @@ pub fn update_editor_ui_system(
                 let locked_tag = if editor.is_layer_locked(editor.current_z) { " [LOCKED]" } else { "" };
                 text.0 = format!("Layer Z: {}{}", editor.current_z, locked_tag);
             }
+        } else if inspector_header_opt.is_some() {
+            if is_placement_mode {
+                text.0 = "PLACEMENT PROPERTIES".into();
+                if let Some(mut col) = text_col_opt {
+                    col.0 = Color::srgb(0.35, 0.85, 1.0);
+                }
+            } else if has_selection {
+                if selected_count == 1 {
+                    text.0 = "SELECTED BLOCK".into();
+                } else {
+                    text.0 = format!("SELECTED BLOCKS ({})", selected_count);
+                }
+                if let Some(mut col) = text_col_opt {
+                    col.0 = TEXT_PRIMARY;
+                }
+            } else {
+                text.0 = "BLOCK INSPECTOR".into();
+                if let Some(mut col) = text_col_opt {
+                    col.0 = TEXT_PRIMARY;
+                }
+            }
         } else if inspector_opt.is_some() {
-            if selected_count == 0 {
-                text.0 = "No block selected.\nClick or drag to select blocks in the grid.".into();
+            if is_placement_mode {
+                let kind = editor.selected_kind.unwrap();
+                let (can_moveable, can_fixed) = editor.allowed_fixed_state(kind);
+                let is_fixed = if !can_moveable {
+                    true
+                } else if !can_fixed {
+                    false
+                } else {
+                    editor.is_fixed
+                };
+                let prop_str = if is_fixed { "Stationary" } else { "Moveable" };
+                let facing = editor.placement_orientation.apply(IVec3::Y);
+                let sym_str = if editor.placement_orientation.is_reflection() { "Reflected" } else { "Rotated" };
+                let z_str = if is_stack_mode {
+                    format!("Stack on Top (floor z={})", editor.floorplan_z)
+                } else {
+                    format!("Fixed Layer Z={}", editor.current_z)
+                };
+                text.0 = format!(
+                    "Tool: {:?}\nProperty: {}\nFacing: ({}, {}, {})\nSymmetry: {}\nZ Mode: {}\n\nClick grid to place.\n[T/G/R/X/Y] Adjust orientation.",
+                    kind, prop_str, facing.x, facing.y, facing.z, sym_str, z_str
+                );
+            } else if !has_selection {
+                text.0 = "Select Mode Active [Esc]\nClick or drag to select blocks in the grid.\n\nPick a block from the palette on the left to enter Placement Mode.".into();
             } else if selected_count == 1 {
                 let body_id = editor.selected_body_ids[0];
                 if let Some(body) = game.engine.world.body(body_id) {
@@ -1773,9 +1961,10 @@ pub fn update_editor_ui_system(
                     } else {
                         "".into()
                     };
+                    let facing = body.orientation.apply(IVec3::Y);
                     text.0 = format!(
-                        "Type: {:?}{}\nPosition: ({}, {}, {})\nProperty: {}\nSymmetry: {}",
-                        body.kind, grp_str, body.anchor.x, body.anchor.y, body.anchor.z, fixed_str, sym_str
+                        "Type: {:?}{}\nPosition: ({}, {}, {})\nProperty: {}\nFacing: ({}, {}, {})\nSymmetry: {}\n\nClick [Copy & Place] to place matching blocks.",
+                        body.kind, grp_str, body.anchor.x, body.anchor.y, body.anchor.z, fixed_str, facing.x, facing.y, facing.z, sym_str
                     );
                 } else {
                     text.0 = "Selected block not found.".into();
@@ -1818,15 +2007,19 @@ pub fn update_editor_ui_system(
     let has_any_combined = editor.selected_body_ids.iter().any(|&id| {
         game.engine.world.body(id).and_then(|b| b.combined_group).is_some()
     });
-    let can_toggle_fixed = selected_count > 0
-        && editor.selected_body_ids.iter().any(|&id| {
-            if let Some(body) = game.engine.world.body(id) {
-                let (can_m, can_f) = editor.allowed_fixed_state(body.kind);
-                can_m && can_f
-            } else {
-                false
-            }
-        });
+    let can_toggle_fixed = if is_placement_mode {
+        can_moveable && can_fixed
+    } else {
+        selected_count > 0
+            && editor.selected_body_ids.iter().any(|&id| {
+                if let Some(body) = game.engine.world.body(id) {
+                    let (can_m, can_f) = editor.allowed_fixed_state(body.kind);
+                    can_m && can_f
+                } else {
+                    false
+                }
+            })
+    };
 
     for (mut bg, palette_opt, prop_opt, z_mode_opt, combine_opt, uncombine_opt, toggle_fixed_opt) in &mut button_query {
         if let Some(palette_btn) = palette_opt {

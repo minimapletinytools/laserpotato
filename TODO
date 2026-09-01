@@ -109,17 +109,17 @@ DONE-blocks that can't be toggled immovable should have the toggle immoveable bu
 DONE-add slight mouse drag camera tilting when in play mode so you can shift the camear around just a bit to see form diff angles (snaps back to orig view on release, at most 25 degrees rotation I guess)
 DONE-the prveiwe on/off doesn't seem to do anything, it always shows preview on, also the button state dosent change, only the status bar at the bottom shows it.
 DONE-in z layer mode there should be agrid line drawn over the layer you are working on, in stack mode, it draws it one above the floor level as it current does.
-
-
 DONE-in z layer mode, other stuff should be made transparent (looks kinda bad lol)
     -I tihnk we need a render thingy for blocks allowing you t olayer modifiers on, this is both for the editor and for play mode renderin.g cany ou think of some dieas?
+DONE-add undor redo support.. cmd z cmd shift z
 
 
 -block inspector in block placement mode shows the block to be placed and changing properties changes the properties of the block to be place (new block instead of block info in this case)
--add undor redo support.. cmd z cmd shift z
 
--fix toolbar in level edtior so it shows preview correctly (or switch to 3d cards instead)
-
+-rework left side menu
+    -fix preview (or move preview over to right side menu?)
+    -there should be an orientation picker rather than the rotate buttons... although 48 is a lot of rotations.... so skip reflectios and yaw or osmething, or have dropdown allowing those to be shown, keep the manual rotatino buttons ofc.
+    
 -start a list of block movement rules for documentation, think carefull about this, we want to document it in such a way so that 
   -the level advance function is sensible and predictable
   -the level solver thingy can somewhat understand these rules for maknig heuristics
@@ -128,7 +128,7 @@ DONE-in z layer mode, other stuff should be made transparent (looks kinda bad lo
 -new movement rules
     -moveable blocks move together when stacked
     -if a moveable block has nothing underneath it it should fall, this is a STATE triggered move rather than a move triggered move, so it will not ahppen on the same subframe as the block underneath it being removed.
--there should be an orientation picker rather than the rotate buttons... although 48 is a lot of rotations.... so skip reflectios and yaw or osmething, or have dropdown allowing those to be shown, keep the manual rotatino buttons ofc.
+
 
 -level structure
     -allow organization by folder

@@ -89,6 +89,8 @@ pub struct EditorSnapshot {
 pub struct EditorState {
     /// Currently selected base block kind from palette (None = Select-Only mode).
     pub selected_kind: Option<BlockKind>,
+    /// Orientation to assign to newly placed blocks.
+    pub placement_orientation: crate::sim::CubeRot,
     /// Property toggle: true = stationary (fixed), false = moveable.
     pub is_fixed: bool,
     /// Active Z placement mode (StackOnTop vs FixedLayer).
@@ -181,6 +183,7 @@ impl Default for EditorState {
 
         Self {
             selected_kind: None, // Default to Select Mode [S]
+            placement_orientation: crate::sim::CubeRot::IDENTITY,
             is_fixed: false,
             z_mode: ZPlacementMode::StackOnTop,
             current_z: 0,
@@ -226,6 +229,27 @@ impl Default for EditorState {
 }
 
 impl EditorState {
+    /// Copy the block kind, orientation, and fixed property of an existing block,
+    /// entering placement mode ready to place matching blocks.
+    pub fn copy_and_place(&mut self, body_id: BodyId, world: &World) -> bool {
+        if let Some(body) = world.body(body_id) {
+            self.selected_kind = Some(body.kind);
+            self.placement_orientation = body.orientation;
+            let (can_moveable, can_fixed) = self.allowed_fixed_state(body.kind);
+            if !can_moveable {
+                self.is_fixed = true;
+            } else if !can_fixed {
+                self.is_fixed = false;
+            } else {
+                self.is_fixed = body.is_fixed();
+            }
+            self.clear_selection();
+            true
+        } else {
+            false
+        }
+    }
+
     /// Push an undo snapshot before mutating the world. Clears the redo stack.
     pub fn push_undo_snapshot(&mut self, world: &World, description: impl Into<String>) {
         let snapshot = EditorSnapshot {
@@ -489,7 +513,7 @@ impl Plugin for EditorPlugin {
 }
 
 pub fn update_palette_3d_preview(
-    time: Res<Time>,
+    _time: Res<Time>,
     app_mode: Res<State<AppMode>>,
     editor: Res<EditorState>,
     render_assets: Option<Res<crate::render::RenderAssets>>,
@@ -509,8 +533,8 @@ pub fn update_palette_3d_preview(
         };
         *vis = Visibility::Visible;
 
-        // Rotate slowly around Y
-        transform.rotate_local_y(1.2 * time.delta_secs());
+        // Apply base placement orientation
+        transform.rotation = crate::render::cube_rot_to_quat(&editor.placement_orientation);
 
         let (can_moveable, can_fixed) = editor.allowed_fixed_state(selected_kind);
         let is_moveable = if !can_moveable {
@@ -903,6 +927,23 @@ fn editor_grid_interaction_system(
             game.engine.update_authoring_world(new_world);
             editor.cached_solution = None;
         }
+    } else if !modifier_held && editor.selected_kind.is_some() {
+        if keyboard.just_pressed(KeyCode::KeyR) {
+            editor.placement_orientation = editor.placement_orientation.rot_world_z_cw();
+            editor.toast("Placement orientation: Rotated CW [R].");
+        } else if keyboard.just_pressed(KeyCode::KeyT) {
+            editor.placement_orientation = editor.placement_orientation.rot_world_x_pos();
+            editor.toast("Placement orientation: Pitched +90° around X axis [T].");
+        } else if keyboard.just_pressed(KeyCode::KeyG) {
+            editor.placement_orientation = editor.placement_orientation.rot_world_y_pos();
+            editor.toast("Placement orientation: Rolled +90° around Y axis [G].");
+        } else if keyboard.just_pressed(KeyCode::KeyX) {
+            editor.placement_orientation = editor.placement_orientation.reflect_x();
+            editor.toast("Placement orientation: Flipped across X axis [X].");
+        } else if keyboard.just_pressed(KeyCode::KeyY) {
+            editor.placement_orientation = editor.placement_orientation.reflect_y();
+            editor.toast("Placement orientation: Flipped across Y axis [Y].");
+        }
     }
 
     let Ok(window) = windows.single() else { return };
@@ -1002,6 +1043,7 @@ fn editor_grid_interaction_system(
 
                 let new_id = game.engine.world.spawn(kind, place_target, vec![IVec3::ZERO]);
                 if let Some(b) = game.engine.world.body_mut(new_id) {
+                    b.orientation = editor.placement_orientation;
                     if is_fixed {
                         b.tags.set(TagKind::Fixed, TagValue::Unit);
                     }
@@ -1306,6 +1348,10 @@ fn editor_button_clicks_system(
                 Option<&ui::DiscardConfirmBtn>,
                 Option<&ui::DiscardCancelBtn>,
             ),
+            (
+                Option<&ui::CopyAndPlaceButton>,
+                Option<&ui::ResetPlacementOrientationButton>,
+            ),
         ),
         (Changed<Interaction>, With<Button>),
     >,
@@ -1326,9 +1372,29 @@ fn editor_button_clicks_system(
         (fp_w_dec, fp_w_inc, fp_h_dec, fp_h_inc, fp_z_dec, fp_z_inc),
         (fp_fill, fp_lock_toggle, fp_close),
         (save_as_confirm, save_as_cancel, discard_confirm, discard_cancel),
+        (copy_and_place_btn, reset_orientation_btn),
     ) in &mut interaction_query
     {
         if *interaction != Interaction::Pressed {
+            continue;
+        }
+
+        // Copy and Place button
+        if copy_and_place_btn.is_some() {
+            if let Some(&first_id) = editor.selected_body_ids.first() {
+                if editor.copy_and_place(first_id, &game.engine.world) {
+                    if let Some(kind) = editor.selected_kind {
+                        editor.toast(format!("Copied {:?} properties to Placement Mode.", kind));
+                    }
+                }
+            }
+            continue;
+        }
+
+        // Reset Placement Orientation button
+        if reset_orientation_btn.is_some() {
+            editor.placement_orientation = crate::sim::CubeRot::IDENTITY;
+            editor.toast("Reset placement orientation.");
             continue;
         }
 
@@ -1428,7 +1494,7 @@ fn editor_button_clicks_system(
             editor.floorplan_height = (editor.floorplan_height + 1).min(50);
         }
         if fp_z_dec.is_some() {
-            editor.floorplan_z = (editor.floorplan_z - 1).max(-10);
+            editor.floorplan_z = (editor.floorplan_z - 1).max(-5);
         }
         if fp_z_inc.is_some() {
             editor.floorplan_z = (editor.floorplan_z + 1).min(20);
@@ -1437,12 +1503,12 @@ fn editor_button_clicks_system(
             let w = editor.floorplan_width;
             let h = editor.floorplan_height;
             let z = editor.floorplan_z;
-            editor.push_undo_snapshot(&game.engine.world, "Fill Floorplan");
+            editor.push_undo_snapshot(&game.engine.world, format!("Fill Floorplan ({}x{} @ Z={})", w, h, z));
             fill_floorplan(&mut game.engine.world, w, h, z);
             let new_world = game.engine.world.clone();
             game.engine.update_authoring_world(new_world);
             editor.cached_solution = None;
-            editor.toast(format!("Filled {}x{} Floor blocks at Layer Z={}.", w, h, z));
+            editor.toast(format!("Filled {}x{} floor at Z={}.", w, h, z));
         }
         if fp_lock_toggle.is_some() {
             let z = editor.floorplan_z;
@@ -1458,11 +1524,12 @@ fn editor_button_clicks_system(
             editor.floorplan_open = false;
         }
 
-        // 6. Top Action buttons
-        if let Some(btn) = action_btn {
-            match btn.0 {
+        // 6. Action buttons (Top Bar)
+        if let Some(act) = action_btn {
+            match act.0 {
                 EditorAction::NewLevel => {
-                    if editor.has_unsaved_changes(&game.engine.world) {
+                    let current_hash = compute_level_hash(&game.engine.world);
+                    if current_hash != editor.last_saved_hash {
                         editor.unsaved_action = UnsavedAction::NewLevel;
                         editor.unsaved_confirm_open = true;
                     } else {
@@ -1471,7 +1538,6 @@ fn editor_button_clicks_system(
                 }
                 EditorAction::Save => {
                     let path = editor.current_level_path.clone();
-                    // Validate and prune stale solutions
                     editor.solutions.retain(|s| level::validate_solution(&game.engine.world, &s.actions));
                     let sol_count = editor.solutions.len();
                     let level_data = LevelData::from_world_with_solutions("Custom Level", &game.engine.world, editor.solutions.clone());
@@ -1480,7 +1546,9 @@ fn editor_button_clicks_system(
                             editor.last_saved_hash = compute_level_hash(&game.engine.world);
                             editor.toast(format!("Saved level with {} solution(s) to {}", sol_count, path));
                         }
-                        Err(e) => editor.toast(format!("Save error: {}", e)),
+                        Err(err) => {
+                            editor.toast(format!("Save failed: {}", err));
+                        }
                     }
                 }
                 EditorAction::SaveAs => {
@@ -1492,21 +1560,12 @@ fn editor_button_clicks_system(
                     editor.save_as_open = true;
                 }
                 EditorAction::OpenLevel => {
-                    if editor.has_unsaved_changes(&game.engine.world) {
+                    let current_hash = compute_level_hash(&game.engine.world);
+                    if current_hash != editor.last_saved_hash {
                         editor.unsaved_action = UnsavedAction::OpenLevel;
                         editor.unsaved_confirm_open = true;
                     } else {
                         editor.open_file_picker();
-                    }
-                }
-                EditorAction::Undo => {
-                    if editor.perform_undo(&mut game.engine).is_none() {
-                        editor.toast("Nothing to undo.");
-                    }
-                }
-                EditorAction::Redo => {
-                    if editor.perform_redo(&mut game.engine).is_none() {
-                        editor.toast("Nothing to redo.");
                     }
                 }
                 EditorAction::ToggleFloorplanModal => {
@@ -1530,6 +1589,16 @@ fn editor_button_clicks_system(
                     }
                     editor.toast("Rotated level view 90° CW (Key: E).");
                 }
+                EditorAction::Undo => {
+                    if editor.perform_undo(&mut game.engine).is_none() {
+                        editor.toast("Nothing to undo.");
+                    }
+                }
+                EditorAction::Redo => {
+                    if editor.perform_redo(&mut game.engine).is_none() {
+                        editor.toast("Nothing to redo.");
+                    }
+                }
                 EditorAction::AttemptSolve => {
                     if !game.engine.is_valid() {
                         editor.solver_status = "Invalid Level".into();
@@ -1537,6 +1606,23 @@ fn editor_button_clicks_system(
                         return;
                     }
                     let current_hash = compute_level_hash(&game.engine.world);
+                    let cached_opt = editor.cached_solution.clone();
+                    if let Some((cached_hash, sol)) = cached_opt {
+                        if cached_hash == current_hash {
+                            editor.toast(format!("Instant cached solution available: {} step(s)!", sol.len()));
+                            editor.solutions.retain(|s| level::validate_solution(&game.engine.world, &s.actions));
+                            if !editor.solutions.iter().any(|s| s.actions == sol) {
+                                editor.solutions.push(crate::level::LevelSolution {
+                                    name: "Optimal Solver Solution".into(),
+                                    actions: sol.clone(),
+                                });
+                            }
+                            editor.solution_picker_open = true;
+                            editor.solution_picker_dirty = true;
+                            return;
+                        }
+                    }
+
                     let world_clone = game.engine.world.clone();
                     let (tx, rx) = mpsc::channel();
                     editor.solver_rx = Some(Arc::new(Mutex::new(rx)));
@@ -1745,6 +1831,49 @@ fn editor_button_clicks_system(
                 let new_world = game.engine.world.clone();
                 game.engine.update_authoring_world(new_world);
                 editor.cached_solution = None;
+            }
+        }
+        // 8. Transformations for placement orientation (when in placement mode)
+        else if let Some(kind) = editor.selected_kind {
+            if rot_x_pos.is_some() {
+                editor.placement_orientation = editor.placement_orientation.rot_world_x_pos();
+                editor.toast("Placement orientation: Pitched +90° around X axis.");
+            }
+            if rot_x_neg.is_some() {
+                editor.placement_orientation = editor.placement_orientation.rot_world_x_neg();
+                editor.toast("Placement orientation: Pitched -90° around X axis.");
+            }
+            if rot_y_pos.is_some() {
+                editor.placement_orientation = editor.placement_orientation.rot_world_y_pos();
+                editor.toast("Placement orientation: Rolled +90° around Y axis.");
+            }
+            if rot_y_neg.is_some() {
+                editor.placement_orientation = editor.placement_orientation.rot_world_y_neg();
+                editor.toast("Placement orientation: Rolled -90° around Y axis.");
+            }
+            if rot_cw.is_some() {
+                editor.placement_orientation = editor.placement_orientation.rot_world_z_cw();
+                editor.toast("Placement orientation: Rotated CW around Z axis.");
+            }
+            if rot_ccw.is_some() {
+                editor.placement_orientation = editor.placement_orientation.rot_world_z_ccw();
+                editor.toast("Placement orientation: Rotated CCW around Z axis.");
+            }
+            if ref_x.is_some() {
+                editor.placement_orientation = editor.placement_orientation.reflect_x();
+                editor.toast("Placement orientation: Reflected across X axis.");
+            }
+            if ref_y.is_some() {
+                editor.placement_orientation = editor.placement_orientation.reflect_y();
+                editor.toast("Placement orientation: Reflected across Y axis.");
+            }
+            if toggle_fixed.is_some() {
+                let (can_moveable, can_fixed) = editor.allowed_fixed_state(kind);
+                if can_moveable && can_fixed {
+                    editor.is_fixed = !editor.is_fixed;
+                    let prop = if editor.is_fixed { "Stationary" } else { "Moveable" };
+                    editor.toast(format!("Placement property: {}", prop));
+                }
             }
         }
     }
@@ -2623,5 +2752,73 @@ mod tests {
         assert_eq!(engine.world.bodies().len(), 2);
         assert!(!editor.can_redo());
         assert_eq!(editor.redo_stack.len(), 0);
+    }
+
+    #[test]
+    fn copy_and_place_test() {
+        let mut world = World::new();
+        let mut editor = EditorState::default();
+
+        // 1. Spawn a custom rotated, stationary Mirror in the world
+        let m1 = world.spawn(BlockKind::Mirror, IVec3::new(2, 3, 0), vec![IVec3::ZERO]);
+        let custom_rot = crate::sim::CubeRot::ROT_Z_270.rot_world_x_pos();
+        if let Some(b) = world.body_mut(m1) {
+            b.orientation = custom_rot;
+            b.tags.set(TagKind::Fixed, TagValue::Unit);
+        }
+
+        // 2. Select the block in Select Mode
+        editor.select_single(m1);
+        assert_eq!(editor.selected_body_ids, vec![m1]);
+        assert_eq!(editor.selected_kind, None);
+
+        // 3. Execute Copy & Place
+        let copied = editor.copy_and_place(m1, &world);
+        assert!(copied);
+
+        // 4. Verify Editor enters Placement Mode with identical properties
+        assert_eq!(editor.selected_kind, Some(BlockKind::Mirror));
+        assert_eq!(editor.placement_orientation, custom_rot);
+        assert!(editor.is_fixed);
+        assert!(editor.selected_body_ids.is_empty()); // Selection cleared for placement
+
+        // 5. Place a new block with these copied settings
+        let place_pos = IVec3::new(5, 5, 0);
+        let m2 = world.spawn(editor.selected_kind.unwrap(), place_pos, vec![IVec3::ZERO]);
+        if let Some(b) = world.body_mut(m2) {
+            b.orientation = editor.placement_orientation;
+            if editor.is_fixed {
+                b.tags.set(TagKind::Fixed, TagValue::Unit);
+            }
+        }
+
+        // 6. Verify placed block has the exact copied orientation and stationary status
+        let b2 = world.body(m2).unwrap();
+        assert_eq!(b2.kind, BlockKind::Mirror);
+        assert_eq!(b2.orientation, custom_rot);
+        assert!(b2.is_fixed());
+    }
+
+    #[test]
+    fn placement_properties_and_orientation_transforms_test() {
+        let mut editor = EditorState::default();
+
+        // 1. Pick Laser Source tool
+        editor.selected_kind = Some(BlockKind::LaserSource);
+        assert_eq!(editor.placement_orientation, crate::sim::CubeRot::IDENTITY);
+        assert!(!editor.is_fixed);
+
+        // 2. Adjust placement properties (Pitch, Roll, Rot CW, Flip X, Toggle Fixed)
+        editor.placement_orientation = editor.placement_orientation.rot_world_x_pos();
+        editor.placement_orientation = editor.placement_orientation.rot_world_z_cw();
+        editor.placement_orientation = editor.placement_orientation.reflect_x();
+        editor.is_fixed = true;
+
+        assert_ne!(editor.placement_orientation, crate::sim::CubeRot::IDENTITY);
+        assert!(editor.is_fixed);
+
+        // 3. Reset orientation
+        editor.placement_orientation = crate::sim::CubeRot::IDENTITY;
+        assert_eq!(editor.placement_orientation, crate::sim::CubeRot::IDENTITY);
     }
 }
