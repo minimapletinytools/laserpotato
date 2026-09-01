@@ -4,7 +4,7 @@
 //! ```bash
 //! cargo run --bin solver
 //! cargo run --bin solver -- --algorithm bfs --verbose
-//! cargo run --bin solver -- --algorithm astar --heuristic composite
+//! cargo run --bin solver -- --algorithm astar --heuristic composite --analyze
 //! cargo run --bin solver -- --help
 //! ```
 
@@ -12,24 +12,25 @@ use std::env;
 use std::time::Duration;
 
 use laserpotato::level;
-use laserpotato::solver::{Algorithm, HeuristicKind, SolverConfig};
+use laserpotato::solver::{analyze_puzzle, Algorithm, HeuristicKind, SolverConfig};
 use laserpotato::turn::TurnEngine;
 
 fn print_help() {
     println!(
-        r#"Laser Potato Automated Puzzle Solver
+        r#"Laser Potato Automated Puzzle Solver & Quality Profiler
 
 USAGE:
     solver [OPTIONS]
 
 OPTIONS:
-    -a, --algorithm <algo>       Search algorithm: bfs, dfs, astar, best_first [default: astar]
-    -h, --heuristic <heuristic>  Heuristic function: composite, laser, zero [default: composite]
-    -d, --max-depth <N>          Maximum search depth in steps [default: 200]
-    -n, --max-nodes <N>          Maximum nodes to expand [default: 500000]
+    -a, --algorithm <algo>       Search algorithm: bfs, astar, best_first [default: astar]
+    -h, --heuristic <heuristic>  Heuristic function: composite, goal_laser, none [default: composite]
+    -d, --max-depth <N>          Maximum search depth in macro moves [default: 50]
+    -n, --max-nodes <N>          Maximum macro nodes to expand [default: 100000]
     -t, --timeout <secs>         Timeout in seconds [default: 30]
     -o, --output <file>          Output file path to save solution JSON [default: solution.json]
     -v, --verbose                Print detailed move-by-move solution trace
+    --analyze                    Run deep puzzle quality, bottleneck, and load-bearing analysis
     --help                       Print this help message
 "#
     );
@@ -40,6 +41,7 @@ fn main() {
 
     let mut config = SolverConfig::default();
     let mut verbose = false;
+    let mut analyze = false;
     let mut output_path = String::from("solution.json");
 
     let mut i = 1;
@@ -54,7 +56,6 @@ fn main() {
                 if i < args.len() {
                     config.algorithm = match args[i].to_lowercase().as_str() {
                         "bfs" => Algorithm::Bfs,
-                        "dfs" => Algorithm::Dfs,
                         "astar" | "a*" => Algorithm::AStar,
                         "best_first" | "bestfirst" | "greedy" => Algorithm::BestFirst,
                         other => {
@@ -68,8 +69,8 @@ fn main() {
                 i += 1;
                 if i < args.len() {
                     config.heuristic = match args[i].to_lowercase().as_str() {
-                        "zero" | "none" => HeuristicKind::Zero,
-                        "laser" | "lasertogoal" => HeuristicKind::LaserToGoal,
+                        "none" | "zero" => HeuristicKind::None,
+                        "laser" | "goal_laser" | "goallaser" => HeuristicKind::GoalLaserTarget,
                         "composite" => HeuristicKind::Composite,
                         other => {
                             eprintln!("Unknown heuristic '{}', defaulting to composite", other);
@@ -111,6 +112,9 @@ fn main() {
             "-v" | "--verbose" => {
                 verbose = true;
             }
+            "--analyze" => {
+                analyze = true;
+            }
             unknown => {
                 eprintln!("Unknown option '{}'. Use --help for usage.", unknown);
             }
@@ -138,9 +142,9 @@ fn main() {
     println!("\n{}", result.format_summary());
 
     if result.is_solved() {
-        println!("Winning Move Sequence ({} actions):", result.actions.len());
-        for (step, action) in result.actions.iter().enumerate() {
-            println!("  {:2}. {:?}", step + 1, action);
+        println!("Macro Moves Sequence ({} moves):", result.macro_moves.len());
+        for (step, m) in result.macro_moves.iter().enumerate() {
+            println!("  {:2}. {:?} (facing: {:?})", step + 1, m.archetype, m.player_push_facing);
         }
 
         match result.save_to_file(&output_path) {
@@ -150,7 +154,7 @@ fn main() {
 
         if verbose {
             println!("\n--- Step-by-Step Simulation Trace ---");
-            let mut engine = TurnEngine::new(initial_world);
+            let mut engine = TurnEngine::new(initial_world.clone());
             for (step, &action) in result.actions.iter().enumerate() {
                 engine.apply(action);
                 let p_anchor = engine
@@ -171,6 +175,12 @@ fn main() {
                 );
             }
             println!("Level successfully resolved!");
+        }
+
+        if analyze {
+            println!("\n--- Deep Puzzle Quality & Bottleneck Analysis ---");
+            let profile = analyze_puzzle(&initial_world);
+            println!("{}", profile.format_report());
         }
     }
 }

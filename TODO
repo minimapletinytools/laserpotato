@@ -148,13 +148,14 @@ DONE-add undor redo support.. cmd z cmd shift z
 
 
 
--do some research into building solve
-    -grouping moves?
-    -identify certain types of "moves"
-    -heuristic, is that actually helpful?
-    -identify unwinnable states
-    -identify uintuitive moves
-        -walk into laser path which will simultaneously disable the laser (miht be solver order dependent...)
+-do some research into building solver
+    -DONE: Documented Draknek & Patrick's Parabox research in docs/solver_puzzle_design.md
+    -Macro move quotient graph & floodfill reachability compression
+    -4 Macro Move Archetypes: Heuristic Inversion (Detour), Irreversible Phase Shift, Spatial Exchange (Nook Parking), Optical Topology Switch
+    -Extensible macro archetype registry for future mechanics (Sensors, Portals, Logic Gates, Polarizers, Fall Triggers)
+    -Composable heuristic framework (trait-based with domain weights)
+    -Automated puzzle quality profiler: Epiphany Score, Load-Bearing Factor, Bottleneck & Choke Point Count, Cheese Detector
+    -Overhaul/rebuild solver from scratch: replace micro-step expansion with macro-move reachability search
 
 
 :: TODONE

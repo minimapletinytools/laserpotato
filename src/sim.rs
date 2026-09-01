@@ -12,12 +12,12 @@ use glam::IVec3;
 
 use crate::block_types::BlockKind;
 
+use serde::{Deserialize, Serialize};
+
 /// Stable handle for a [`Body`]. Indices, not references, so state stays
 /// `Copy`/`Hash`/serializable without borrow-checker fights.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct BodyId(pub u32);
-
-use serde::{Deserialize, Serialize};
 
 /// One of the 24 rotations of a cube, stored as an orthogonal integer matrix
 /// (row `r` says where world-axis `r` gets its value from in local space).

@@ -545,7 +545,7 @@ fn evaluate_outcome(world: &World, laser_state: &[LaserSegment]) -> GameOutcome 
 /// Starting from `mover_id` wanting to step in `direction`, collect every
 /// body that must also move (transitively pushed). Returns `None` if the
 /// chain is blocked by an immovable body.
-fn collect_push_chain(world: &World, mover_id: BodyId, direction: IVec3) -> Option<Vec<BodyId>> {
+pub fn collect_push_chain(world: &World, mover_id: BodyId, direction: IVec3) -> Option<Vec<BodyId>> {
     let mut chain = world.combined_group_members(mover_id);
     let mut i = 0;
 

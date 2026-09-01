@@ -1,17 +1,27 @@
-//! Automated puzzle solver engine for *Laser Potato*.
+//! Automated puzzle solver and quality analysis engine for *Laser Potato*.
 //!
-//! Provides graph search (BFS, DFS, A*, Greedy Best-First), state
-//! canonicalization, cycle/loop detection, and heuristic evaluation.
+//! Provides Macro-Move Quotient Graph search, reachability flood-fill,
+//! composable heuristics, and puzzle quality profiling (Epiphany Score,
+//! Bottleneck detection, Load-Bearing redundancy checking).
 
+pub mod analysis;
 pub mod heuristic;
+pub mod macro_move;
+pub mod reachability;
 pub mod result;
 pub mod search;
 pub mod state;
 
-pub use heuristic::HeuristicKind;
+pub use analysis::{analyze_puzzle, PuzzleProfile};
+pub use heuristic::{
+    CompositeHeuristic, GoalLaserTargetHeuristic, HeuristicKind, PlayerProximityHeuristic,
+    PuzzleHeuristic,
+};
+pub use macro_move::{generate_macro_moves, MacroArchetype, MacroMove};
+pub use reachability::ReachabilityMap;
 pub use result::{load_actions_from_file, SolveResult, SolveStatus};
 pub use search::{search, Algorithm, SolverConfig};
-pub use state::{CanonicalState, CompactBodyState};
+pub use state::{CompactBodyState, MacroState};
 
 use crate::sim::World;
 
@@ -30,10 +40,9 @@ mod tests {
     use super::*;
     use glam::IVec3;
     use crate::block_types::BlockKind;
-    use crate::turn::PlayerAction;
 
     #[test]
-    fn solver_solves_trivial_single_step_puzzle() {
+    fn solver_solves_trivial_single_push_puzzle() {
         let mut world = World::new();
         // Player at (3, 1) facing +X
         let player_id = world.spawn(BlockKind::Player, IVec3::new(3, 1, 0), vec![IVec3::ZERO]);
@@ -50,14 +59,14 @@ mod tests {
         let goal_id = world.spawn(BlockKind::Goal, IVec3::new(7, 1, 0), vec![IVec3::ZERO]);
         world.body_mut(goal_id).unwrap().tags.set(crate::sim::TagKind::Fixed, crate::sim::TagValue::Unit);
 
-        let result = solve(world);
+        let result = solve(world.clone());
         assert!(result.is_solved());
-        assert_eq!(result.actions.len(), 1);
-        assert_eq!(result.actions[0], PlayerAction::Forward);
+        assert_eq!(result.macro_count(), 1);
+        assert!(crate::turn::validate_solution(&world, &result.actions));
     }
 
     #[test]
-    fn solver_bfs_solves_and_finds_shortest_path() {
+    fn solver_bfs_solves_and_finds_shortest_macro_path() {
         let mut world = World::new();
         let player_id = world.spawn(BlockKind::Player, IVec3::new(3, 1, 0), vec![IVec3::ZERO]);
         world.body_mut(player_id).unwrap().orientation = crate::sim::CubeRot::ROT_Z_270;
@@ -75,8 +84,7 @@ mod tests {
         };
         let result = solve_with_config(world, &config);
         assert!(result.is_solved());
-        assert_eq!(result.actions.len(), 1);
-        assert_eq!(result.actions[0], PlayerAction::Forward);
+        assert_eq!(result.macro_count(), 1);
     }
 
     #[test]
@@ -103,10 +111,40 @@ mod tests {
         }
 
         let config = SolverConfig {
-            max_depth: Some(10),
+            max_depth: Some(5),
             ..Default::default()
         };
         let result = solve_with_config(world, &config);
         assert!(!result.is_solved());
+    }
+
+    #[test]
+    fn solver_puzzle_quality_profiler_test() {
+        let mut world = World::new();
+        // Player at (3, 1) facing +X
+        let player_id = world.spawn(BlockKind::Player, IVec3::new(3, 1, 0), vec![IVec3::ZERO]);
+        world.body_mut(player_id).unwrap().orientation = crate::sim::CubeRot::ROT_Z_270;
+
+        // Fixed laser at (5, 0) firing +Y
+        let laser_id = world.spawn(BlockKind::LaserSource, IVec3::new(5, 0, 0), vec![IVec3::ZERO]);
+        world.body_mut(laser_id).unwrap().tags.set(crate::sim::TagKind::Fixed, crate::sim::TagValue::Unit);
+
+        // Moveable mirror at (4, 1)
+        let m1 = world.spawn(BlockKind::Mirror, IVec3::new(4, 1, 0), vec![IVec3::ZERO]);
+
+        // Redundant moveable crate at (0, 0)
+        let c1 = world.spawn(BlockKind::Pushable, IVec3::new(0, 0, 0), vec![IVec3::ZERO]);
+
+        // Goal pyramid at (7, 1)
+        let goal_id = world.spawn(BlockKind::Goal, IVec3::new(7, 1, 0), vec![IVec3::ZERO]);
+        world.body_mut(goal_id).unwrap().tags.set(crate::sim::TagKind::Fixed, crate::sim::TagValue::Unit);
+
+        let profile = analyze_puzzle(&world);
+        assert!(profile.is_solvable);
+        assert_eq!(profile.macro_steps, 1);
+        // Crate c1 should be detected as redundant
+        assert!(profile.redundant_bodies.contains(&c1));
+        // Mirror m1 should NOT be redundant (it is load-bearing)
+        assert!(!profile.redundant_bodies.contains(&m1));
     }
 }

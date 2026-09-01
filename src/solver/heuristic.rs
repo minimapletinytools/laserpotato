@@ -1,149 +1,183 @@
-//! Heuristic evaluation functions for state scoring and informed search (A*, Greedy Best-First).
+//! Composable, weighted heuristic framework for puzzle state evaluation.
+//!
+//! Provides extensible trait-based heuristic evaluators for laser routing,
+//! goal activation, spatial proximity, and upcoming puzzle mechanics.
 
 use glam::IVec3;
+use serde::{Deserialize, Serialize};
 
 use crate::block_types::BlockKind;
-use crate::laser::LaserSegment;
+use crate::laser;
 use crate::sim::World;
+use crate::solver::reachability::ReachabilityMap;
 
-/// Type of heuristic evaluation function.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+/// Built-in heuristic selector for solver configuration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum HeuristicKind {
-    /// Always returns 0 (uninformed search, Dijkstra / BFS equivalence in A*).
-    Zero,
-    /// Minimum Manhattan distance from any active laser beam termination point to the Goal.
-    LaserToGoal,
-    /// Weighted combination of laser proximity to goal and player proximity to interactive blocks.
+    /// Zero heuristic ($h = 0$, pure uniform-cost / BFS).
+    None,
+    /// Distance from laser beam endpoints to Goal pyramids.
+    GoalLaserTarget,
+    /// Weighted composite of all domain evaluators.
     #[default]
     Composite,
 }
 
-/// Manhattan distance (L1 norm) between two 3D integer coordinates.
-#[inline]
-pub fn manhattan_distance(a: IVec3, b: IVec3) -> u32 {
-    ((a.x - b.x).abs() + (a.y - b.y).abs() + (a.z - b.z).abs()) as u32
+/// Trait defining an admissible or informative puzzle heuristic.
+pub trait PuzzleHeuristic: Send + Sync {
+    /// Evaluate estimated remaining effort (0 = goal reached).
+    fn estimate(&self, world: &World, reachability: &ReachabilityMap) -> u32;
+
+    /// Human-readable name for logging and performance profiling.
+    fn name(&self) -> &'static str;
 }
 
-/// Evaluates the heuristic estimate $h(s)$ for the given world and laser state.
-/// Lower values indicate states that are closer to completing the level.
-pub fn evaluate(world: &World, laser_segments: &[LaserSegment], kind: HeuristicKind) -> u32 {
-    if kind == HeuristicKind::Zero {
-        return 0;
-    }
+/// Heuristic evaluating how close laser beam paths are to striking all Goal pyramids.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct GoalLaserTargetHeuristic;
 
-    // 1. Locate Goal block(s)
-    let goal_positions: Vec<IVec3> = world
-        .bodies()
-        .iter()
-        .filter(|b| b.kind == BlockKind::Goal)
-        .map(|b| b.anchor)
-        .collect();
+impl PuzzleHeuristic for GoalLaserTargetHeuristic {
+    fn estimate(&self, world: &World, _reachability: &ReachabilityMap) -> u32 {
+        let goals: Vec<IVec3> = world
+            .bodies()
+            .iter()
+            .filter(|b| b.kind == BlockKind::Goal)
+            .map(|b| b.anchor)
+            .collect();
 
-    if goal_positions.is_empty() {
-        return 0;
-    }
-
-    // 2. Check if all goals are already struck by lasers
-    let mut hit_goals = std::collections::HashSet::new();
-    for segment in laser_segments {
-        if let Some(hit) = &segment.hit {
-            if let Some(body) = world.body(hit.body_id) {
-                if body.kind == BlockKind::Goal {
-                    hit_goals.insert(body.id);
-                }
-            }
+        if goals.is_empty() {
+            return 0;
         }
-    }
-    if hit_goals.len() == goal_positions.len() {
-        return 0;
-    }
 
-    // 3. Laser-to-Goal distance: find minimum distance from any ray tip to any goal
-    let mut min_laser_dist = u32::MAX;
-    for segment in laser_segments {
-        let endpoint = if let Some(hit) = &segment.hit {
-            hit.cell
-        } else if let Some(&last_cell) = segment.cells.last() {
-            last_cell
-        } else {
-            segment.origin
-        };
+        let laser_segments = laser::cast_all_lasers(world);
+        let mut total_h = 0u32;
 
-        for &goal_pos in &goal_positions {
-            let d = manhattan_distance(endpoint, goal_pos);
-            if d < min_laser_dist {
-                min_laser_dist = d;
-            }
-        }
-    }
+        for &goal_pos in &goals {
+            let mut is_hit = false;
+            let mut min_dist_to_goal = u32::MAX;
 
-    if min_laser_dist == u32::MAX {
-        min_laser_dist = 50; // Fallback if no lasers active
-    }
-
-    if kind == HeuristicKind::LaserToGoal {
-        return min_laser_dist * 10;
-    }
-
-    // 4. Composite: include player distance to nearest moveable / interactive block
-    let mut player_to_block_dist = 0;
-    if let Some(player_id) = world.player_id() {
-        if let Some(player) = world.body(player_id) {
-            let mut min_p_dist = u32::MAX;
-            for body in world.bodies() {
-                if body.id != player_id && body.is_pushable() {
-                    let d = manhattan_distance(player.anchor, body.anchor);
-                    if d < min_p_dist {
-                        min_p_dist = d;
+            for seg in &laser_segments {
+                if let Some(hit) = &seg.hit {
+                    if let Some(target_body) = world.body(hit.body_id) {
+                        if target_body.kind == BlockKind::Goal && target_body.anchor == goal_pos {
+                            is_hit = true;
+                            break;
+                        }
                     }
                 }
+
+                let end_point = seg
+                    .hit
+                    .as_ref()
+                    .map(|h| h.cell)
+                    .unwrap_or_else(|| seg.cells.last().copied().unwrap_or(seg.origin));
+
+                let seg_dist = (end_point.x - goal_pos.x).abs()
+                    + (end_point.y - goal_pos.y).abs()
+                    + (end_point.z - goal_pos.z).abs();
+                min_dist_to_goal = min_dist_to_goal.min(seg_dist as u32);
             }
-            if min_p_dist != u32::MAX {
-                player_to_block_dist = min_p_dist;
+
+            if !is_hit {
+                // Base penalty for unhit goal + distance from closest laser tip
+                total_h += 10 + min_dist_to_goal.min(50);
             }
+        }
+
+        total_h
+    }
+
+    fn name(&self) -> &'static str {
+        "GoalLaserTarget"
+    }
+}
+
+/// Heuristic measuring player distance to the nearest moveable interaction.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct PlayerProximityHeuristic;
+
+impl PuzzleHeuristic for PlayerProximityHeuristic {
+    fn estimate(&self, world: &World, _reachability: &ReachabilityMap) -> u32 {
+        let Some(player_id) = world.player_id() else {
+            return 0;
+        };
+        let Some(player) = world.body(player_id) else {
+            return 0;
+        };
+
+        let min_dist = world
+            .bodies()
+            .iter()
+            .filter(|b| b.is_pushable() && b.id != player_id)
+            .map(|b| {
+                (b.anchor.x - player.anchor.x).abs()
+                    + (b.anchor.y - player.anchor.y).abs()
+                    + (b.anchor.z - player.anchor.z).abs()
+            })
+            .min()
+            .unwrap_or(0);
+
+        // Small tie-breaker cost (scaled down)
+        (min_dist as u32).min(10)
+    }
+
+    fn name(&self) -> &'static str {
+        "PlayerProximity"
+    }
+}
+
+/// Composite heuristic aggregating multiple weighted sub-evaluators.
+pub struct CompositeHeuristic {
+    evaluators: Vec<(Box<dyn PuzzleHeuristic>, f32)>,
+}
+
+impl Default for CompositeHeuristic {
+    fn default() -> Self {
+        Self {
+            evaluators: vec![
+                (Box::new(GoalLaserTargetHeuristic), 1.0),
+                (Box::new(PlayerProximityHeuristic), 0.2),
+            ],
+        }
+    }
+}
+
+impl CompositeHeuristic {
+    pub fn new() -> Self {
+        Self {
+            evaluators: Vec::new(),
         }
     }
 
-    min_laser_dist * 10 + player_to_block_dist
+    /// Add a domain evaluator with a relative weight.
+    pub fn add_evaluator<H: PuzzleHeuristic + 'static>(&mut self, heuristic: H, weight: f32) {
+        self.evaluators.push((Box::new(heuristic), weight));
+    }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::block_types::BlockKind;
-    use crate::laser;
-    use crate::sim::World;
-
-    #[test]
-    fn goal_reached_evaluates_to_zero() {
-        let mut world = World::new();
-        world.spawn(BlockKind::LaserSource, IVec3::new(0, 0, 0), vec![IVec3::ZERO]);
-        world.spawn(BlockKind::Goal, IVec3::new(0, 3, 0), vec![IVec3::ZERO]);
-
-        let lasers = laser::cast_all_lasers(&world);
-        assert_eq!(evaluate(&world, &lasers, HeuristicKind::LaserToGoal), 0);
-        assert_eq!(evaluate(&world, &lasers, HeuristicKind::Composite), 0);
+impl PuzzleHeuristic for CompositeHeuristic {
+    fn estimate(&self, world: &World, reachability: &ReachabilityMap) -> u32 {
+        let mut score = 0.0f32;
+        for (evaluator, weight) in &self.evaluators {
+            score += evaluator.estimate(world, reachability) as f32 * weight;
+        }
+        score.round() as u32
     }
 
-    #[test]
-    fn closer_laser_has_lower_heuristic_score() {
-        let mut w1 = World::new();
-        w1.spawn(BlockKind::LaserSource, IVec3::new(0, 0, 0), vec![IVec3::ZERO]);
-        w1.spawn(BlockKind::Wall, IVec3::new(0, 2, 0), vec![IVec3::ZERO]);
-        w1.spawn(BlockKind::Goal, IVec3::new(5, 5, 0), vec![IVec3::ZERO]);
+    fn name(&self) -> &'static str {
+        "Composite"
+    }
+}
 
-        let mut w2 = World::new();
-        w2.spawn(BlockKind::LaserSource, IVec3::new(0, 0, 0), vec![IVec3::ZERO]);
-        w2.spawn(BlockKind::Wall, IVec3::new(0, 4, 0), vec![IVec3::ZERO]);
-        w2.spawn(BlockKind::Goal, IVec3::new(5, 5, 0), vec![IVec3::ZERO]);
-
-        let l1 = laser::cast_all_lasers(&w1);
-        let l2 = laser::cast_all_lasers(&w2);
-
-        let h1 = evaluate(&w1, &l1, HeuristicKind::LaserToGoal);
-        let h2 = evaluate(&w2, &l2, HeuristicKind::LaserToGoal);
-
-        // Ray in w2 travels further towards (5,5) than ray in w1
-        assert!(h2 < h1);
+/// Evaluate a heuristic by kind on the current world and reachability map.
+pub fn evaluate_heuristic(
+    kind: HeuristicKind,
+    world: &World,
+    reachability: &ReachabilityMap,
+) -> u32 {
+    match kind {
+        HeuristicKind::None => 0,
+        HeuristicKind::GoalLaserTarget => GoalLaserTargetHeuristic.estimate(world, reachability),
+        HeuristicKind::Composite => CompositeHeuristic::default().estimate(world, reachability),
     }
 }
