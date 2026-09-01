@@ -39,14 +39,13 @@ impl PuzzleProfile {
         }
 
         s.push_str(&format!(
-            "[✓] Puzzle Quality Profile:\n    Optimal Path: {} macro moves ({} turns)\n    Epiphany Score: {:.1} ({})\n    Load-Bearing Factor: {:.0}% ({}/{} essential pieces)\n",
+            "[✓] Puzzle Quality Profile:\n    Optimal Path: {} macro moves ({} turns)\n    Epiphany Score: {:.1} ({})\n    Load-Bearing Factor: {:.0}% ({})\n",
             self.macro_steps,
             self.atomic_turns,
             self.epiphany_score,
             if self.epiphany_score > 5.0 { "High Heuristic Deception" } else if self.epiphany_score > 1.5 { "Moderate Insight" } else { "Straightforward / Greedy" },
             self.load_bearing_factor * 100.0,
-            self.redundant_bodies.is_empty(),
-            if self.redundant_bodies.is_empty() { "100%" } else { "Warning: Redundant pieces detected" }
+            if self.redundant_bodies.is_empty() { "100% - All pieces essential" } else { "Warning: Redundant pieces detected" }
         ));
 
         if !self.redundant_bodies.is_empty() {
@@ -114,7 +113,10 @@ pub fn analyze_puzzle(world: &World) -> PuzzleProfile {
     let player_id = world.player_id();
 
     for body in world.bodies() {
-        if Some(body.id) == player_id || body.kind == BlockKind::Goal || (body.kind == BlockKind::Floor && body.is_fixed()) {
+        if Some(body.id) == player_id
+            || body.kind == BlockKind::Goal
+            || ((body.kind == BlockKind::Floor || body.kind == BlockKind::Wall) && body.is_fixed())
+        {
             continue;
         }
 

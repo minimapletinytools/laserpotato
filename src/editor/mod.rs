@@ -2028,19 +2028,25 @@ fn background_solver_poll_system(
         if solved_hash == current_hash {
             if result.is_solved() {
                 editor.solver_status = format!(
-                    "✓ Solved in {} steps ({:.2?})",
+                    "✓ Solved: {} moves ({} turns) ({:.2?})",
+                    result.macro_moves.len(),
                     result.actions.len(),
                     result.duration
                 );
                 editor.cached_solution = Some((current_hash, result.actions.clone()));
-                let name = format!("Solver BFS ({} steps)", result.actions.len());
+                let name = format!("Solver A* ({} moves, {} turns)", result.macro_moves.len(), result.actions.len());
                 if !editor.solutions.iter().any(|s| s.actions == result.actions) {
                     editor.solutions.push(crate::level::LevelSolution {
                         name,
                         actions: result.actions.clone(),
                     });
                 }
-                let msg = format!("Solver: Found {}-step solution (added to solutions)!", result.actions.len());
+                let msg = format!(
+                    "Solver: Found {}-move ({}-turn) solution in {:.2?} (added to solutions)!",
+                    result.macro_moves.len(),
+                    result.actions.len(),
+                    result.duration
+                );
                 editor.toast(msg);
             } else {
                 editor.solver_status = format!("✗ No Solution ({:.2?})", result.duration);

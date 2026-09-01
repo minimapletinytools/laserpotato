@@ -189,23 +189,23 @@ impl ReachabilityMap {
             }
 
             // Candidate walking / turning actions
-            let candidate_actions = match movement_mode {
-                PlayerMovementMode::Tank => vec![
-                    (PlayerAction::Forward, curr.pos + curr.facing, curr.facing),
-                    (PlayerAction::Backward, curr.pos - curr.facing, curr.facing),
-                    (
+            let mut candidate_actions = Vec::new();
+            match movement_mode {
+                PlayerMovementMode::Tank => {
+                    candidate_actions.push((PlayerAction::Forward, curr.pos + curr.facing, curr.facing));
+                    candidate_actions.push((PlayerAction::Backward, curr.pos - curr.facing, curr.facing));
+                    candidate_actions.push((
                         PlayerAction::TurnLeft,
                         curr.pos,
                         CubeRot::ROT_Z_90.apply(curr.facing),
-                    ),
-                    (
+                    ));
+                    candidate_actions.push((
                         PlayerAction::TurnRight,
                         curr.pos,
                         CubeRot::ROT_Z_270.apply(curr.facing),
-                    ),
-                ],
+                    ));
+                }
                 PlayerMovementMode::Strafe => {
-                    let mut acts = Vec::new();
                     for &dir in &CARDINAL_DIRS {
                         let action = match (dir.x, dir.y) {
                             (0, 1) => PlayerAction::MoveNorth,
@@ -214,12 +214,10 @@ impl ReachabilityMap {
                             (-1, 0) => PlayerAction::MoveWest,
                             _ => continue,
                         };
-                        acts.push((action, curr.pos + dir, curr.facing));
+                        candidate_actions.push((action, curr.pos + dir, curr.facing));
                     }
-                    acts
                 }
                 PlayerMovementMode::TurnAndMove | PlayerMovementMode::TurnAndMoveBackstep => {
-                    let mut acts = Vec::new();
                     for &dir in &CARDINAL_DIRS {
                         let action = match (dir.x, dir.y) {
                             (0, 1) => PlayerAction::MoveNorth,
@@ -233,11 +231,10 @@ impl ReachabilityMap {
                         } else {
                             dir
                         };
-                        acts.push((action, curr.pos + dir, next_facing));
+                        candidate_actions.push((action, curr.pos + dir, next_facing));
                     }
-                    acts
                 }
-            };
+            }
 
             for (action, next_pos, next_facing) in candidate_actions {
                 // Pos must be reachable

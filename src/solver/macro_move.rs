@@ -111,27 +111,27 @@ pub fn generate_macro_moves(world: &World, reachability: &ReachabilityMap) -> Ve
             }
 
             // Verify that pushing in `dir` is legally allowed by the physics chain
-            // Note: collect_push_chain checks whether pushing from required_stand_pos succeeds
-            if collect_push_chain(world, player_id, dir).is_none() {
-                // If player is not at required_stand_pos, simulate push directly
-                let mut sim_world = world.clone();
-                if let Some(p) = sim_world.body_mut(player_id) {
-                    p.anchor = required_stand_pos;
-                }
-                sim_world.sync_grid();
-                if collect_push_chain(&sim_world, player_id, dir).is_none() {
-                    continue;
-                }
+            let mut sim_world = world.clone();
+            if let Some(p) = sim_world.body_mut(player_id) {
+                p.anchor = required_stand_pos;
+            }
+            sim_world.sync_grid();
+            if collect_push_chain(&sim_world, player_id, dir).is_none() {
+                continue;
             }
 
-            // Pathfind walking actions to required_stand_pos facing `dir`
-            let walk_actions = match reachability.find_walk_path(
-                required_stand_pos,
-                Some(dir),
-                movement_mode,
-            ) {
-                Some(acts) => acts,
-                None => continue,
+            // Pathfind walking actions to required_stand_pos
+            let walk_actions = if required_stand_pos == reachability.start_pos {
+                Vec::new()
+            } else {
+                match reachability.find_walk_path(
+                    required_stand_pos,
+                    None,
+                    movement_mode,
+                ) {
+                    Some(acts) => acts,
+                    None => continue,
+                }
             };
 
             let push_action = match movement_mode {

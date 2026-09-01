@@ -147,4 +147,45 @@ mod tests {
         // Mirror m1 should NOT be redundant (it is load-bearing)
         assert!(!profile.redundant_bodies.contains(&m1));
     }
+
+    #[test]
+    fn solve_levels_directory_test() {
+        for file in crate::level::list_level_files() {
+            println!("==================================================");
+            println!("Testing level file: {}", file);
+            if let Ok(data) = crate::level::load_level_from_file(&file) {
+                let world = data.to_world();
+                println!("  Bodies: {}", world.bodies().len());
+                let player_id = world.player_id();
+                println!("  Player ID: {:?}, anchor={:?}", player_id, player_id.and_then(|id| world.body(id)).map(|b| b.anchor));
+                
+                // Print all bodies around player
+                if let Some(pid) = player_id {
+                    let player = world.body(pid).unwrap();
+                    println!("  Player pos: {:?}", player.anchor);
+                    for &dir in &crate::solver::reachability::CARDINAL_DIRS {
+                        let adj = player.anchor + dir;
+                        let occ = world.body_at(adj);
+                        println!("    Adj {:?} (at {:?}): {:?}", dir, adj, occ.map(|b| (b.id, b.kind, b.is_fixed())));
+                    }
+                }
+
+                let reachability = ReachabilityMap::compute(&world);
+                println!("  Reachability: {:?}", reachability.as_ref().map(|r| (r.start_pos, r.reachable_cells.len())));
+                if let Some(rm) = &reachability {
+                    println!("  Reachable cells: {:?}", rm.reachable_cells.keys().collect::<Vec<_>>());
+                    println!("  Hazard cells: {:?}", rm.hazard_cells.iter().collect::<Vec<_>>());
+                    let moves = generate_macro_moves(&world, rm);
+                    println!("  Generated Macro Moves: {}", moves.len());
+                    for (i, m) in moves.iter().enumerate() {
+                        println!("    {}. body={:?} dir={:?} stand={:?} actions={:?}", i + 1, m.target_body, m.direction, m.player_stand_pos, m.walk_actions);
+                    }
+                }
+                let res = solve(world.clone());
+                println!("  Solve result: status={:?} macro_moves={} turns={} duration={:?}", res.status, res.macro_moves.len(), res.actions.len(), res.duration);
+                assert!(res.is_solved(), "Level {} should be solvable", file);
+                assert!(crate::turn::validate_solution(&world, &res.actions), "Solution for {} must be valid in turn engine", file);
+            }
+        }
+    }
 }
