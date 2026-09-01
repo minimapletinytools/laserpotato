@@ -427,6 +427,11 @@ impl Body {
         self.tags.has(TagKind::Fixed) || matches!(self.kind, BlockKind::Wall | BlockKind::Floor)
     }
 
+    /// Whether this specific body currently has the `Burnt` tag.
+    pub fn is_burnt(&self) -> bool {
+        self.tags.has(TagKind::Burnt)
+    }
+
     /// Computes the canonical orientation representing the equivalence class of this body's
     /// physical properties under the 48 symmetry operations of Oh.
     ///

@@ -169,6 +169,7 @@ pub fn resolve_frame_one(frame_zero_star: &World) -> (World, Vec<LaserSegment>, 
 
     // Multi-pass state / laser resolution
     let laser_state = laser::cast_all_lasers(&frame1_world);
+    apply_laser_burn_tags(&mut frame1_world, &laser_state);
 
     let outcome = evaluate_outcome(&frame1_world, &laser_state);
 
@@ -301,6 +302,7 @@ impl TurnEngine {
         if let Some(prev) = self.undo_stack.pop() {
             self.world = prev;
             self.laser_state = laser::cast_all_lasers(&self.world);
+            apply_laser_burn_tags(&mut self.world, &self.laser_state);
             self.outcome = evaluate_outcome(&self.world, &self.laser_state);
             TurnResult::Undone
         } else {
@@ -334,6 +336,7 @@ impl TurnEngine {
 
         // --- state / laser phase ------------------------------------------
         self.laser_state = laser::cast_all_lasers(&self.world);
+        apply_laser_burn_tags(&mut self.world, &self.laser_state);
 
         self.outcome = evaluate_outcome(&self.world, &self.laser_state);
 
@@ -439,40 +442,63 @@ impl TurnEngine {
     }
 }
 
+/// Updates `TagKind::Burnt` on bodies in `world` based on laser hits.
+/// Striking the player applies the Burnt tag to the player object.
+pub fn apply_laser_burn_tags(world: &mut World, laser_state: &[LaserSegment]) {
+    use crate::sim::{TagKind, TagValue};
+    let mut burnt_ids = std::collections::HashSet::new();
+    for segment in laser_state {
+        if let Some(hit) = &segment.hit {
+            burnt_ids.insert(hit.body_id);
+        }
+    }
+
+    let all_body_ids: Vec<BodyId> = world.bodies().iter().map(|b| b.id).collect();
+    for id in all_body_ids {
+        if let Some(body) = world.body_mut(id) {
+            if burnt_ids.contains(&id) {
+                if body.kind == BlockKind::Player {
+                    body.tags.set(TagKind::Burnt, TagValue::Unit);
+                }
+            } else if body.kind == BlockKind::Player {
+                body.tags.remove(TagKind::Burnt);
+            }
+        }
+    }
+}
+
 /// Evaluates if the current state is a Win, Loss, or InProgress.
-/// Striking the Player takes precedence as a Loss.
+/// A burnt Player takes precedence as a Loss.
 /// Winning requires ALL Goal pyramids in the world to be struck by laser beams.
 fn evaluate_outcome(world: &World, laser_state: &[LaserSegment]) -> GameOutcome {
-    let mut hit_player = false;
-    let mut hit_goals = std::collections::HashSet::new();
+    if let Some(player_id) = world.player_id() {
+        if let Some(player) = world.body(player_id) {
+            if player.is_burnt() {
+                return GameOutcome::Lost;
+            }
+        }
+    }
 
+    let mut hit_goals = std::collections::HashSet::new();
     for segment in laser_state {
         if let Some(hit) = &segment.hit {
             if let Some(body) = world.body(hit.body_id) {
-                match body.kind {
-                    BlockKind::Player => hit_player = true,
-                    BlockKind::Goal => {
-                        hit_goals.insert(body.id);
-                    }
-                    _ => {}
+                if body.kind == BlockKind::Goal {
+                    hit_goals.insert(body.id);
                 }
             }
         }
     }
 
-    if hit_player {
-        GameOutcome::Lost
+    let total_goals = world
+        .bodies()
+        .iter()
+        .filter(|b| b.kind == BlockKind::Goal)
+        .count();
+    if total_goals > 0 && hit_goals.len() == total_goals {
+        GameOutcome::Won
     } else {
-        let total_goals = world
-            .bodies()
-            .iter()
-            .filter(|b| b.kind == BlockKind::Goal)
-            .count();
-        if total_goals > 0 && hit_goals.len() == total_goals {
-            GameOutcome::Won
-        } else {
-            GameOutcome::InProgress
-        }
+        GameOutcome::InProgress
     }
 }
 
@@ -644,6 +670,8 @@ mod tests {
 
         assert_eq!(engine.outcome, GameOutcome::Lost);
         assert!(engine.is_lost());
+        let pid = engine.world.player_id().unwrap();
+        assert!(engine.world.body(pid).unwrap().is_burnt());
 
         // In Loss state, gameplay inputs are blocked
         assert_eq!(engine.apply(PlayerAction::Forward), TurnResult::GameOver);
@@ -652,6 +680,7 @@ mod tests {
         // Undo successfully takes the player out of the laser!
         assert_eq!(engine.apply(PlayerAction::Undo), TurnResult::Undone);
         assert_eq!(engine.outcome, GameOutcome::InProgress);
+        assert!(!engine.world.body(pid).unwrap().is_burnt());
     }
 
     #[test]

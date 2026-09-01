@@ -1042,7 +1042,7 @@ pub fn sync_bodies(
                     mesh_handle.0 = if is_moveable { assets.rounded_pyramid_mesh.clone() } else { assets.pyramid_mesh.clone() };
                 }
                 BlockKind::Player => {
-                    mat_handle.0 = if show_preview && game.engine.is_lost() {
+                    mat_handle.0 = if show_preview && body.is_burnt() {
                         assets.player_burnt_mat.clone()
                     } else {
                         assets.player_mat.clone()
@@ -1128,7 +1128,7 @@ pub fn sync_bodies(
                 (mesh, mat)
             }
             BlockKind::Player => {
-                let mat = if show_preview && game.engine.is_lost() {
+                let mat = if show_preview && body.is_burnt() {
                     assets.player_burnt_mat.clone()
                 } else {
                     assets.player_mat.clone()
@@ -1248,7 +1248,9 @@ pub fn sync_lasers(
 ) {
     // 1. Live dynamic recalculation of laser raycasts from current world state every frame
     // (active on frame 0, in the level editor, during solution playback, and during playtest)
-    game.engine.laser_state = crate::laser::cast_all_lasers(&game.engine.world);
+    let laser_state = crate::laser::cast_all_lasers(&game.engine.world);
+    crate::turn::apply_laser_burn_tags(&mut game.engine.world, &laser_state);
+    game.engine.laser_state = laser_state;
 
     for entity in &beams {
         commands.entity(entity).despawn();

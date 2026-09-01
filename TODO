@@ -106,10 +106,8 @@ DONE-improve frame 0 state computations
 DONE-right after placinga. bolk,c it does not select it. you can't not select stuff in block placement mode
 DONE-in z layer mode, after somethingis selected, click by drag moves the entire selection (only if new position for all blocks is allowed)
 DONE-blocks that can't be toggled immovable should have the toggle immoveable button grayed out
-
-
--add slight mouse drag camera tilting when in play mode so you can shift the camear around just a bit to see form diff angles (snaps back to orig view on release, at most 25 degrees rotation I guess)
--the prveiwe on/off doesn't seem to do anything, it always shows preview on, also the button state dosent change, only the status bar at the bottom shows it.
+DONE-add slight mouse drag camera tilting when in play mode so you can shift the camear around just a bit to see form diff angles (snaps back to orig view on release, at most 25 degrees rotation I guess)
+DONE-the prveiwe on/off doesn't seem to do anything, it always shows preview on, also the button state dosent change, only the status bar at the bottom shows it.
 
 
 -in z layer mode there should be agrid line drawn over the layer you are working on
