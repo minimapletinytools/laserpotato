@@ -7,6 +7,7 @@ use bevy::prelude::*;
 pub mod block_types;
 pub mod camera;
 pub mod editor;
+pub mod generator;
 pub mod input;
 pub mod laser;
 pub mod level;

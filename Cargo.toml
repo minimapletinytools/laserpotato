@@ -21,6 +21,10 @@ path = "src/bin/play.rs"
 name = "solver"
 path = "src/bin/solver.rs"
 
+[[bin]]
+name = "miner"
+path = "src/bin/miner.rs"
+
 [dependencies]
 bevy = "0.19.0"
 glam = { version = "0.32", features = ["serde"] }

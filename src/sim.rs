@@ -528,6 +528,11 @@ impl Grid {
     }
 }
 
+/// Helper to create a single-cell unit shape vector `[IVec3::ZERO]`.
+pub fn unit_shape() -> Vec<IVec3> {
+    vec![IVec3::ZERO]
+}
+
 /// The full simulation state: the canonical list of bodies plus a derived
 /// spatial index over them.
 ///
