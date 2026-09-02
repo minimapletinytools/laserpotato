@@ -130,6 +130,8 @@ pub struct EditorState {
     pub file_picker_open: bool,
     /// Directory path currently being browsed in the file picker.
     pub file_picker_dir: String,
+    /// Top item scroll offset for the file picker list.
+    pub file_picker_scroll_offset: usize,
     /// Flag indicating that the file picker directory contents need refreshing in the UI.
     pub file_picker_dirty: bool,
     /// World state hash when level was last saved/loaded (for detecting unsaved changes).
@@ -214,6 +216,7 @@ impl Default for EditorState {
             unsaved_action: UnsavedAction::NewLevel,
             file_picker_open: false,
             file_picker_dir: String::from("levels"),
+            file_picker_scroll_offset: 0,
             file_picker_dirty: true,
             solutions: Vec::new(),
             solution_picker_open: false,
@@ -395,10 +398,21 @@ impl EditorState {
     pub fn open_file_picker(&mut self) {
         self.file_picker_open = true;
         self.file_picker_dirty = true;
+        self.file_picker_scroll_offset = 0;
         if self.file_picker_dir.is_empty() {
             self.file_picker_dir = "levels".to_string();
         }
         self.toast("Browsing level files...");
+    }
+
+    /// Whether any modal dialog is currently open in the editor.
+    pub fn is_modal_open(&self) -> bool {
+        self.floorplan_open
+            || self.save_as_open
+            || self.unsaved_confirm_open
+            || self.file_picker_open
+            || self.solution_picker_open
+            || self.quality_modal_open
     }
 
     /// Close any open modals. Returns true if a modal was closed.
@@ -422,6 +436,10 @@ impl EditorState {
         }
         if self.solution_picker_open {
             self.solution_picker_open = false;
+            closed = true;
+        }
+        if self.quality_modal_open {
+            self.quality_modal_open = false;
             closed = true;
         }
         closed
@@ -522,6 +540,7 @@ impl Plugin for EditorPlugin {
                     editor_grid_interaction_system,
                     editor_button_clicks_system,
                     file_picker_button_clicks_system,
+                    file_picker_keyboard_and_wheel_system,
                     solution_picker_button_clicks_system,
                     ui::quality_modal_interaction_system,
                 )
@@ -1937,6 +1956,10 @@ fn file_picker_button_clicks_system(
             Option<&ui::FilePickerUpBtn>,
             Option<&ui::FilePickerDirBtn>,
             Option<&ui::FilePickerFileBtn>,
+            Option<&ui::FilePickerScrollUpBtn>,
+            Option<&ui::FilePickerScrollDownBtn>,
+            Option<&ui::FilePickerScrollPageUpBtn>,
+            Option<&ui::FilePickerScrollPageDownBtn>,
             Option<&ui::FilePickerCancelBtn>,
         ),
         (Changed<Interaction>, With<Button>),
@@ -1948,16 +1971,18 @@ fn file_picker_button_clicks_system(
         return;
     }
 
-    for (interaction, up_btn, dir_btn, file_btn, cancel_btn) in &mut interaction_query {
+    for (interaction, up_btn, dir_btn, file_btn, scroll_up, scroll_down, scroll_page_up, scroll_page_down, cancel_btn) in &mut interaction_query {
         if *interaction != Interaction::Pressed {
             continue;
         }
 
         if let Some(up) = up_btn {
             editor.file_picker_dir = up.0.clone();
+            editor.file_picker_scroll_offset = 0;
             editor.file_picker_dirty = true;
         } else if let Some(dir) = dir_btn {
             editor.file_picker_dir = dir.0.clone();
+            editor.file_picker_scroll_offset = 0;
             editor.file_picker_dirty = true;
         } else if let Some(file) = file_btn {
             let target_path = file.0.clone();
@@ -1981,10 +2006,77 @@ fn file_picker_button_clicks_system(
                     editor.toast(format!("Load error: {}", e));
                 }
             }
+        } else if scroll_up.is_some() {
+            editor.file_picker_scroll_offset = editor.file_picker_scroll_offset.saturating_sub(1);
+            editor.file_picker_dirty = true;
+        } else if scroll_down.is_some() {
+            editor.file_picker_scroll_offset = editor.file_picker_scroll_offset.saturating_add(1);
+            editor.file_picker_dirty = true;
+        } else if scroll_page_up.is_some() {
+            editor.file_picker_scroll_offset = editor.file_picker_scroll_offset.saturating_sub(10);
+            editor.file_picker_dirty = true;
+        } else if scroll_page_down.is_some() {
+            editor.file_picker_scroll_offset = editor.file_picker_scroll_offset.saturating_add(10);
+            editor.file_picker_dirty = true;
         } else if cancel_btn.is_some() {
             editor.file_picker_open = false;
             editor.toast("Cancelled file picker.");
         }
+    }
+}
+
+/// Handles mouse wheel scrolling and keyboard navigation (Arrow Up/Down, Page Up/Down, Home/End) inside the File Picker modal.
+fn file_picker_keyboard_and_wheel_system(
+    mut mouse_wheel: MessageReader<bevy::input::mouse::MouseWheel>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mut editor: ResMut<EditorState>,
+) {
+    if !editor.file_picker_open {
+        return;
+    }
+
+    let mut scroll_delta: i32 = 0;
+
+    // 1. Mouse wheel scrolling
+    for event in mouse_wheel.read() {
+        if event.y > 0.0 {
+            scroll_delta -= 3;
+        } else if event.y < 0.0 {
+            scroll_delta += 3;
+        }
+    }
+
+    // 2. Keyboard scrolling shortcuts
+    if keys.just_pressed(KeyCode::ArrowUp) || keys.just_pressed(KeyCode::KeyW) {
+        scroll_delta -= 1;
+    }
+    if keys.just_pressed(KeyCode::ArrowDown) || keys.just_pressed(KeyCode::KeyS) {
+        scroll_delta += 1;
+    }
+    if keys.just_pressed(KeyCode::PageUp) {
+        scroll_delta -= 10;
+    }
+    if keys.just_pressed(KeyCode::PageDown) {
+        scroll_delta += 10;
+    }
+    if keys.just_pressed(KeyCode::Home) {
+        editor.file_picker_scroll_offset = 0;
+        editor.file_picker_dirty = true;
+        return;
+    }
+    if keys.just_pressed(KeyCode::End) {
+        editor.file_picker_scroll_offset = usize::MAX;
+        editor.file_picker_dirty = true;
+        return;
+    }
+
+    if scroll_delta != 0 {
+        if scroll_delta < 0 {
+            editor.file_picker_scroll_offset = editor.file_picker_scroll_offset.saturating_sub((-scroll_delta) as usize);
+        } else {
+            editor.file_picker_scroll_offset = editor.file_picker_scroll_offset.saturating_add(scroll_delta as usize);
+        }
+        editor.file_picker_dirty = true;
     }
 }
 
@@ -2742,24 +2834,38 @@ mod tests {
     fn file_picker_and_unsaved_flow_test() {
         let mut editor = EditorState::default();
         assert!(!editor.file_picker_open);
+        assert!(!editor.is_modal_open());
         assert_eq!(editor.file_picker_dir, "levels");
+        assert_eq!(editor.file_picker_scroll_offset, 0);
 
         // Opening file picker
+        editor.file_picker_scroll_offset = 15;
         editor.open_file_picker();
         assert!(editor.file_picker_open);
+        assert!(editor.is_modal_open());
         assert!(editor.file_picker_dirty);
+        assert_eq!(editor.file_picker_scroll_offset, 0); // Reset to top
+
+        // Scrolling offset changes
+        editor.file_picker_scroll_offset = editor.file_picker_scroll_offset.saturating_add(5);
+        assert_eq!(editor.file_picker_scroll_offset, 5);
+        editor.file_picker_scroll_offset = editor.file_picker_scroll_offset.saturating_sub(2);
+        assert_eq!(editor.file_picker_scroll_offset, 3);
 
         // Closing modals
         assert!(editor.close_modals());
         assert!(!editor.file_picker_open);
+        assert!(!editor.is_modal_open());
 
         // Unsaved action routing
         editor.unsaved_action = UnsavedAction::OpenLevel;
         editor.unsaved_confirm_open = true;
         assert_eq!(editor.unsaved_action, UnsavedAction::OpenLevel);
+        assert!(editor.is_modal_open());
 
         assert!(editor.close_modals());
         assert!(!editor.unsaved_confirm_open);
+        assert!(!editor.is_modal_open());
     }
 
     #[test]

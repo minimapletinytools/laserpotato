@@ -196,7 +196,6 @@ pub fn resolve_frame_one(frame_zero_star: &World) -> (World, Vec<LaserSegment>, 
             "Level is invalid: spontaneous movement during Frame 1 resolution (Frame 0* → Frame 1): {}",
             moved_bodies.join(", ")
         );
-        eprintln!("[!] {}", msg);
         Some(msg)
     } else {
         None

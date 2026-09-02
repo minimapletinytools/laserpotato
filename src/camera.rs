@@ -45,6 +45,7 @@ impl Default for CameraController {
 pub fn camera_controller_system(
     time: Res<Time>,
     app_mode: Option<Res<State<AppMode>>>,
+    editor_opt: Option<Res<crate::editor::EditorState>>,
     keys: Res<ButtonInput<KeyCode>>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     mut mouse_wheel: MessageReader<MouseWheel>,
@@ -55,14 +56,20 @@ pub fn camera_controller_system(
         return;
     };
 
-    // 1. Mouse Wheel Zoom (active in all modes)
-    for event in mouse_wheel.read() {
-        let zoom_amount = match event.unit {
-            MouseScrollUnit::Line => event.y * 1.2,
-            MouseScrollUnit::Pixel => event.y * 0.05,
-        };
-        controller.distance = (controller.distance - zoom_amount)
-            .clamp(controller.min_distance, controller.max_distance);
+    let modal_open = editor_opt.as_ref().map(|e| e.is_modal_open()).unwrap_or(false);
+
+    // 1. Mouse Wheel Zoom (active when modal is not capturing scroll)
+    if !modal_open {
+        for event in mouse_wheel.read() {
+            let zoom_amount = match event.unit {
+                MouseScrollUnit::Line => event.y * 1.2,
+                MouseScrollUnit::Pixel => event.y * 0.05,
+            };
+            controller.distance = (controller.distance - zoom_amount)
+                .clamp(controller.min_distance, controller.max_distance);
+        }
+    } else {
+        for _ in mouse_wheel.read() {}
     }
 
     let is_editor = app_mode
