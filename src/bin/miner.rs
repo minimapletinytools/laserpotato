@@ -56,6 +56,7 @@ OPTIONS:
     -t, --threads <N>          Parallel worker threads (default: available CPU cores)
     -m, --min-macro <N>        Minimum macro moves for optimal path (default: 3)
         --max-macro <N>        Maximum macro moves for optimal path (default: unlimited)
+        --min-moveable <N>     Minimum number of moveable/pushable blocks required (default: 0)
     -e, --min-epiphany <F>     Minimum Epiphany / Deception Score (default: 1.5)
     -T, --technique <TAG>      Filter by required technique (e.g. beam-relay, nook-parking, laser-shadow, detour)
         --allow-redundant      Allow non-load-bearing red herring blocks (default: false, requires 100%)
@@ -130,6 +131,10 @@ fn main() {
             "--max-macro" => {
                 i += 1;
                 config.max_macro_steps = Some(args[i].parse().expect("Invalid --max-macro"));
+            }
+            "--min-moveable" => {
+                i += 1;
+                config.min_moveable_blocks = args[i].parse().expect("Invalid --min-moveable");
             }
             "-e" | "--min-epiphany" => {
                 i += 1;
@@ -251,6 +256,7 @@ fn main() {
     println!("  Worker Threads     : {}", num_threads);
     println!("  Room Dimensions    : {}x{}x{}", config.candidate_spec.width, config.candidate_spec.height, config.candidate_spec.depth);
     println!("  Min Macro Moves    : {}", config.min_macro_steps);
+    println!("  Min Moveable Blocks: {}", config.min_moveable_blocks);
     println!("  Min Epiphany Score : {:.1}", config.min_epiphany_score);
     if let Some(ref tech) = technique_filter {
         println!("  Technique Filter   : {}", tech);
@@ -339,14 +345,20 @@ fn main() {
                 } else {
                     format!("#{}/{}", count, effective_target_count)
                 };
+                let moveable_count = puzzle
+                    .world
+                    .bodies()
+                    .filter(|b| b.is_pushable() && b.kind != laserpotato::block_types::BlockKind::Player)
+                    .count();
                 println!(
-                    "\n[★ GEM FOUND {}] Saved: {:?} (Seed: {}, Moves: {}, Turns: {}, Epiphany: {:.1}, Tech: [{}], Load-Bearing: {:.0}%)",
+                    "\n[★ GEM FOUND {}] Saved: {:?} (Seed: {}, Moves: {}, Turns: {}, Epiphany: {:.1}, Moveables: {}, Tech: [{}], Load-Bearing: {:.0}%)",
                     count_str,
                     path.file_name().unwrap_or_default(),
                     puzzle.seed,
                     puzzle.profile.macro_steps,
                     puzzle.profile.atomic_turns,
                     puzzle.profile.epiphany_score,
+                    moveable_count,
                     tech_str,
                     puzzle.profile.load_bearing_factor * 100.0
                 );

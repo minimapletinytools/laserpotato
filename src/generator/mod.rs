@@ -24,6 +24,8 @@ pub struct GeneratorConfig {
     pub min_macro_steps: usize,
     /// Maximum allowed macro moves (optional upper bound).
     pub max_macro_steps: Option<usize>,
+    /// Minimum number of moveable/pushable blocks required on the board.
+    pub min_moveable_blocks: usize,
     /// Minimum Epiphany Score (ratio of greedy detour / dead-end search to optimal path).
     pub min_epiphany_score: f32,
     /// Whether all interactive blocks on the board must be strictly load-bearing (0 red herrings).
@@ -42,6 +44,7 @@ impl Default for GeneratorConfig {
             candidate_spec: CandidateSpec::default(),
             min_macro_steps: 3,
             max_macro_steps: None,
+            min_moveable_blocks: 0,
             min_epiphany_score: 1.5,
             require_load_bearing: true,
             auto_prune_redundant: true,
@@ -147,6 +150,17 @@ pub fn evaluate_seed(seed: u64, config: &GeneratorConfig) -> Option<DiscoveredPu
 
     if config.require_load_bearing && profile.load_bearing_factor < 0.99 {
         return None;
+    }
+
+    // Moveable blocks threshold check (reject puzzles with too few pushable/interactive blocks)
+    if config.min_moveable_blocks > 0 {
+        let moveable_count = current_world
+            .bodies()
+            .filter(|b| b.is_pushable() && b.kind != crate::block_types::BlockKind::Player)
+            .count();
+        if moveable_count < config.min_moveable_blocks {
+            return None;
+        }
     }
 
     let sol_name = format!(
