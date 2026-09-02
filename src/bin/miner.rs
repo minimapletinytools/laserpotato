@@ -348,6 +348,7 @@ fn main() {
                 let moveable_count = puzzle
                     .world
                     .bodies()
+                    .iter()
                     .filter(|b| b.is_pushable() && b.kind != laserpotato::block_types::BlockKind::Player)
                     .count();
                 println!(

@@ -156,6 +156,7 @@ pub fn evaluate_seed(seed: u64, config: &GeneratorConfig) -> Option<DiscoveredPu
     if config.min_moveable_blocks > 0 {
         let moveable_count = current_world
             .bodies()
+            .iter()
             .filter(|b| b.is_pushable() && b.kind != crate::block_types::BlockKind::Player)
             .count();
         if moveable_count < config.min_moveable_blocks {
