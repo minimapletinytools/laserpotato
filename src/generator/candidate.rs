@@ -192,36 +192,84 @@ pub fn generate_candidate_world(seed: u64, spec: &CandidateSpec) -> Option<World
     ];
     let facings_4 = [IVec3::X, -IVec3::X, IVec3::Y, -IVec3::Y];
 
-    // 4. Combined Blocks / Joined Polyominos (e.g. Crate+Mirror rigid pair or Domino)
+    // 4. Combined Blocks / Joined Polyominos (Domino pairs and Trominos of diverse block kinds)
     let num_combined = rng.gen_range(spec.recipe.combined_blocks.0, spec.recipe.combined_blocks.1 + 1);
-    if num_combined > 0 && spec.recipe.is_allowed(BlockKind::Pushable) && spec.recipe.is_allowed(BlockKind::Mirror) {
+    if num_combined > 0 && spec.recipe.is_allowed(BlockKind::Pushable) {
         let mut combined_spawned = 0;
         let mut i = 0;
         while i < available_cells.len() && combined_spawned < num_combined {
             let cell1 = available_cells[i];
             let neighbors = [cell1 + IVec3::X, cell1 - IVec3::X, cell1 + IVec3::Y, cell1 - IVec3::Y];
-            
+
             if let Some(&cell2) = neighbors.iter().find(|n| {
                 n.x > 0 && n.x < w - 1 && n.y > 0 && n.y < h - 1 && !occupied_cells.contains(n) && available_cells.contains(n)
             }) {
-                // Remove cell1 and cell2 from available pool
-                available_cells.retain(|&c| c != cell1 && c != cell2);
+                // Check if a 3rd neighbor is available for a 3-block Tromino (30% chance)
+                let make_tromino = rng.gen_bool(0.30);
+                let cell3_opt = if make_tromino {
+                    let n3_candidates = [
+                        cell2 + IVec3::X, cell2 - IVec3::X, cell2 + IVec3::Y, cell2 - IVec3::Y,
+                        cell1 + IVec3::X, cell1 - IVec3::X, cell1 + IVec3::Y, cell1 - IVec3::Y,
+                    ];
+                    n3_candidates.iter().copied().find(|n| {
+                        *n != cell1 && *n != cell2 && n.x > 0 && n.x < w - 1 && n.y > 0 && n.y < h - 1 && !occupied_cells.contains(n) && available_cells.contains(n)
+                    })
+                } else {
+                    None
+                };
+
+                // Remove cells from available pool
+                available_cells.retain(|&c| c != cell1 && c != cell2 && Some(c) != cell3_opt);
                 occupied_cells.insert(cell1);
                 occupied_cells.insert(cell2);
-
-                let gid = world.next_combined_group_id();
-                
-                // Spawn Crate at cell1
-                let cid = world.spawn(BlockKind::Pushable, cell1, unit_shape());
-                if let Some(b) = world.body_mut(cid) {
-                    b.combined_group = Some(gid);
+                if let Some(c3) = cell3_opt {
+                    occupied_cells.insert(c3);
                 }
 
-                // Spawn Mirror at cell2
-                let mid = world.spawn(BlockKind::Mirror, cell2, unit_shape());
-                if let Some(b) = world.body_mut(mid) {
+                let gid = world.next_combined_group_id();
+
+                // Select group composition
+                let group_type = rng.gen_range(0, 4);
+                let (k1, k2) = match group_type {
+                    0 => (BlockKind::Pushable, BlockKind::Mirror),
+                    1 if spec.recipe.is_allowed(BlockKind::Mirror) => (BlockKind::Mirror, BlockKind::Mirror),
+                    2 => (BlockKind::Pushable, BlockKind::Pushable),
+                    3 if spec.recipe.is_allowed(BlockKind::Glass) => (BlockKind::Glass, BlockKind::Mirror),
+                    _ => (BlockKind::Pushable, BlockKind::Mirror),
+                };
+
+                // Spawn block 1
+                let id1 = world.spawn(k1, cell1, unit_shape());
+                if let Some(b) = world.body_mut(id1) {
                     b.combined_group = Some(gid);
-                    b.orientation = *rng.choose(&orientations_4).unwrap_or(&CubeRot::IDENTITY);
+                    if k1 == BlockKind::Mirror {
+                        b.orientation = *rng.choose(&orientations_4).unwrap_or(&CubeRot::IDENTITY);
+                    }
+                }
+
+                // Spawn block 2
+                let id2 = world.spawn(k2, cell2, unit_shape());
+                if let Some(b) = world.body_mut(id2) {
+                    b.combined_group = Some(gid);
+                    if k2 == BlockKind::Mirror {
+                        b.orientation = *rng.choose(&orientations_4).unwrap_or(&CubeRot::IDENTITY);
+                    }
+                }
+
+                // Spawn optional block 3 for Tromino
+                if let Some(c3) = cell3_opt {
+                    let k3 = if rng.gen_bool(0.5) && spec.recipe.is_allowed(BlockKind::Mirror) {
+                        BlockKind::Mirror
+                    } else {
+                        BlockKind::Pushable
+                    };
+                    let id3 = world.spawn(k3, c3, unit_shape());
+                    if let Some(b) = world.body_mut(id3) {
+                        b.combined_group = Some(gid);
+                        if k3 == BlockKind::Mirror {
+                            b.orientation = *rng.choose(&orientations_4).unwrap_or(&CubeRot::IDENTITY);
+                        }
+                    }
                 }
 
                 combined_spawned += 1;
