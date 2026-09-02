@@ -224,4 +224,11 @@ mod tests {
         assert_eq!(BlockRecipe::parse_block_kind("mirror").unwrap(), BlockKind::Mirror);
         assert_eq!(BlockRecipe::parse_block_kind("laser").unwrap(), BlockKind::LaserSource);
     }
+
+    #[test]
+    fn test_min_moveable_blocks_filter() {
+        let mut config = GeneratorConfig::default();
+        config.min_moveable_blocks = 4;
+        assert_eq!(config.min_moveable_blocks, 4);
+    }
 }
