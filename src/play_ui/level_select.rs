@@ -462,7 +462,7 @@ pub fn spawn_level_select_screen(commands: &mut Commands, _catalog: &LevelCatalo
 
                         card.spawn((
                             BrowserDetailsPathText,
-                            Text::new("File: shipped/tutorials/simple_1.json"),
+                            Text::new("File: shipped/simple_1.json"),
                             TextFont::from_font_size(12.0),
                             TextColor(theme::TEXT_CYAN),
                         ));
