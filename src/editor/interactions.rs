@@ -413,6 +413,7 @@ pub fn editor_button_clicks_system(
                 }
                 EditorAction::EnterLevelTester => {
                     editor.return_mode = AppMode::LevelTester;
+                    editor.tester_entries.clear();
                     editor.tester_dirty = true;
                     next_mode.set(AppMode::LevelTester);
                     editor.toast("Switched to Level Tester mode.");

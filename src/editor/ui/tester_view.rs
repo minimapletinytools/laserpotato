@@ -563,21 +563,38 @@ pub fn update_tester_table_ui_system(
     if editor.tester_entries.is_empty() {
         let path = std::path::Path::new(&editor.tester_dir);
         let mut loaded = Vec::new();
-        if let Ok(read_dir) = std::fs::read_dir(path) {
-            for entry in read_dir.flatten() {
-                let p = entry.path();
-                let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
-                if name.starts_with('.') {
-                    continue;
-                }
-                if p.is_file() && p.extension().and_then(|ext| ext.to_str()) == Some("json") {
-                    let path_str = p.to_string_lossy().to_string();
-                    if let Some(entry_data) = crate::level::extract_tester_level_entry(&path_str, &name) {
-                        loaded.push(entry_data);
+
+        fn collect_tester_entries(
+            dir: &std::path::Path,
+            base: &std::path::Path,
+            loaded: &mut Vec<crate::level::TesterLevelEntry>,
+        ) {
+            if let Ok(read_dir) = std::fs::read_dir(dir) {
+                let mut entries: Vec<_> = read_dir.flatten().collect();
+                entries.sort_by_key(|e| e.path());
+                for entry in entries {
+                    let p = entry.path();
+                    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+                    if name.starts_with('.') {
+                        continue;
+                    }
+                    if p.is_dir() {
+                        collect_tester_entries(&p, base, loaded);
+                    } else if p.is_file() && p.extension().and_then(|ext| ext.to_str()) == Some("json") {
+                        let path_str = p.to_string_lossy().to_string();
+                        let rel_name = p
+                            .strip_prefix(base)
+                            .map(|rp| rp.to_string_lossy().to_string())
+                            .unwrap_or(name);
+                        if let Some(entry_data) = crate::level::extract_tester_level_entry(&path_str, &rel_name) {
+                            loaded.push(entry_data);
+                        }
                     }
                 }
             }
         }
+
+        collect_tester_entries(path, path, &mut loaded);
         editor.tester_entries = loaded;
         if editor.tester_selected_path.is_none() && !editor.tester_entries.is_empty() {
             editor.tester_selected_path = Some(editor.tester_entries[0].path.clone());
