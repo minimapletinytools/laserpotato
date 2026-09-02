@@ -200,6 +200,9 @@ pub const DEFAULT_PLAYER_MOVEMENT_MODE: PlayerMovementMode = PlayerMovementMode:
 pub struct BlockProperties {
     /// Whether this block can be pushed when untagged.
     pub is_pushable: bool,
+    /// Whether this block is subject to gravity and falls when unsupported.
+    /// If false, moving over an empty space with no support is an invalid move.
+    pub is_fallable: bool,
     /// Whether this block prevents other blocks from occupying its cells.
     pub is_solid: bool,
     /// Whether this block is directly controlled by player movement commands.
@@ -218,6 +221,7 @@ impl Default for BlockProperties {
     fn default() -> Self {
         Self {
             is_pushable: false,
+            is_fallable: true,
             is_solid: true,
             is_player_controlled: false,
             player_movement_mode: DEFAULT_PLAYER_MOVEMENT_MODE,
@@ -272,6 +276,7 @@ impl BlockProperties {
         }
         Self {
             is_pushable: self.is_pushable,
+            is_fallable: self.is_fallable,
             is_solid: self.is_solid,
             is_player_controlled: self.is_player_controlled,
             player_movement_mode: self.player_movement_mode,
@@ -291,6 +296,7 @@ impl BlockProperties {
         }
         Self {
             is_pushable: self.is_pushable,
+            is_fallable: self.is_fallable,
             is_solid: self.is_solid,
             is_player_controlled: self.is_player_controlled,
             player_movement_mode: self.player_movement_mode,
@@ -346,10 +352,12 @@ impl BlockKind {
             }
             Self::Wall => {
                 props.is_pushable = false;
+                props.is_fallable = false;
                 props.movement_priority = 100;
             }
             Self::Floor => {
                 props.is_pushable = false;
+                props.is_fallable = false;
                 props.is_solid = true;
                 props.movement_priority = 100;
                 // All faces walkable by default

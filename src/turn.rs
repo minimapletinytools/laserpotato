@@ -603,7 +603,77 @@ pub fn collect_push_chain(world: &World, mover_id: BodyId, direction: IVec3) -> 
         i += 1;
     }
 
+    // 3. Fallability / Support validation:
+    // Any non-fallable body in the push chain MUST be supported from underneath at its destination.
+    for &body_id in &chain {
+        let body = world.body(body_id).unwrap();
+        if !body.is_fallable() && !is_destination_supported(world, body, direction, &chain) {
+            return None;
+        }
+    }
+
     Some(chain)
+}
+
+/// Check if a non-fallable body in the push chain would be supported at its destination.
+/// Returns false if the body would be left floating in empty space with no solid support below it.
+fn is_destination_supported(
+    world: &World,
+    body: &crate::sim::Body,
+    direction: IVec3,
+    chain: &[BodyId],
+) -> bool {
+    for cell in body.world_cells() {
+        let target_cell = cell + direction;
+        // If at base ground level (z <= 0), it is supported by ground
+        if target_cell.z <= 0 {
+            continue;
+        }
+
+        let below_cell = target_cell - IVec3::Z;
+
+        // Check what will be at below_cell after the push moves:
+        // 1. Is there a solid body in chain that moves to below_cell?
+        let supported_by_chain = chain.iter().any(|&other_id| {
+            if other_id == body.id {
+                return false;
+            }
+            if let Some(other) = world.body(other_id) {
+                if other.properties().is_solid {
+                    return other.world_cells().iter().any(|&c| c + direction == below_cell);
+                }
+            }
+            false
+        });
+
+        if supported_by_chain {
+            continue;
+        }
+
+        // 2. Is there a stationary solid body at below_cell that is NOT moving away?
+        let supported_by_stationary = if let Some(occ_id) = world.grid().occupant_at(below_cell) {
+            if !chain.contains(&occ_id) {
+                if let Some(occ) = world.body(occ_id) {
+                    occ.properties().is_solid
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if supported_by_stationary {
+            continue;
+        }
+
+        // This cell has no support underneath at the destination
+        return false;
+    }
+
+    true
 }
 
 // ---------------------------------------------------------------------------
@@ -666,7 +736,7 @@ pub fn resolve_gravity_settlement(world: &mut World) -> bool {
         let mut bodies_to_fall = Vec::new();
 
         for body in world.bodies() {
-            if !body.is_fixed() && !supported.contains(&body.id) {
+            if body.is_fallable() && !body.is_fixed() && !supported.contains(&body.id) {
                 bodies_to_fall.push(body.id);
             }
         }
@@ -1169,5 +1239,50 @@ mod tests {
         // A lands on ground at z = 0, B lands on A at z = 1
         assert_eq!(world.body(aid).unwrap().anchor, IVec3::new(2, 0, 0));
         assert_eq!(world.body(bid).unwrap().anchor, IVec3::new(2, 0, 1));
+    }
+
+    #[test]
+    fn fallable_player_walks_off_ledge_and_falls_test() {
+        let mut world = World::new();
+        // Elevated platform at (0, 0, 0)
+        let fid = world.spawn(BlockKind::Wall, IVec3::new(0, 0, 0), vec![IVec3::ZERO]);
+        world.body_mut(fid).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
+
+        // Player standing on top of wall at (0, 0, 1), facing East (+X)
+        let pid = world.spawn(BlockKind::Player, IVec3::new(0, 0, 1), vec![IVec3::ZERO]);
+        world.body_mut(pid).unwrap().orientation = CubeRot::from_facing_2d(IVec3::X);
+        assert!(world.body(pid).unwrap().is_fallable());
+
+        // (1, 0, 0) is empty space down to ground z = 0
+        let mut engine = TurnEngine::new(world);
+        assert_eq!(engine.apply(PlayerAction::Forward), TurnResult::Ok);
+
+        // Player stepped East into empty space (1, 0, 1), and then fell to ground at (1, 0, 0)!
+        assert_eq!(engine.world.body(pid).unwrap().anchor, IVec3::new(1, 0, 0));
+    }
+
+    #[test]
+    fn non_fallable_player_blocked_from_walking_off_ledge_test() {
+        let mut world = World::new();
+        // Elevated platform at (0, 0, 0)
+        let fid = world.spawn(BlockKind::Wall, IVec3::new(0, 0, 0), vec![IVec3::ZERO]);
+        world.body_mut(fid).unwrap().tags.set(TagKind::Fixed, TagValue::Unit);
+
+        // Fallable Player standing on top of wall at (0, 0, 1), facing East (+X)
+        let pid = world.spawn(BlockKind::Player, IVec3::new(0, 0, 1), vec![IVec3::ZERO]);
+        world.body_mut(pid).unwrap().orientation = CubeRot::from_facing_2d(IVec3::X);
+        assert!(world.body(pid).unwrap().is_fallable());
+
+        // Target (1, 0, 1) has empty space at (1, 0, 0), so fallable player is allowed to move and then falls
+        let chain = collect_push_chain(&world, pid, IVec3::X);
+        assert!(chain.is_some());
+
+        // Now test with a non-fallable block (like Wall with is_fallable = false):
+        let mut test_world = World::new();
+        let wid = test_world.spawn(BlockKind::Wall, IVec3::new(0, 0, 1), vec![IVec3::ZERO]);
+        assert!(!test_world.body(wid).unwrap().is_fallable());
+        // Non-fallable block moving over empty space is blocked by is_destination_supported:
+        let supported = is_destination_supported(&test_world, test_world.body(wid).unwrap(), IVec3::X, &[wid]);
+        assert!(!supported); // Not supported at (1, 0, 1)!
     }
 }

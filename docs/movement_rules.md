@@ -91,13 +91,20 @@ When body $A$ moves **horizontally** ($\vec{d}_z = 0$):
 If the player directly pushes an elevated block $B$ at $z > 0$:
 - $B$ slides across the supporting block $A$ beneath it.
 - Block $A$ remains stationary (unless separately pushed).
-- If $B$ is pushed off the edge of $A$ into empty air, $B$ does not fall during Subframe 1. It falls during Subframe 2 (State Settlement).
+- If $B$ is fallable (`is_fallable == true`) and pushed off the edge of $A$ into empty air, $B$ does not fall during Subframe 1. It falls during Subframe 2 (State Settlement).
 
-### Rule 4: State-Triggered Gravity Falling
-In Subframe 2 (State Settlement):
-- All moveable bodies that lack transitive support beneath them fall downward by $-1Z$ per pass.
-- **Lockstep Stack Drop**: When a stack of unsupported bodies falls, all members of the stack fall simultaneously in lockstep, preserving their vertical distances and orientations.
-- **Landing**: A falling body ceases falling as soon as any of its cells lands on a supported solid body or the base ground plane ($z \le 0$).
+### Rule 4: Fallability Constraint & State-Triggered Gravity Falling
+Blocks define an intrinsic `is_fallable` behavioral property:
+- **`Wall` and `Floor`**: `is_fallable = false` (immovable and non-fallable).
+- **All other blocks (`Player`, `Crate`, `Mirror`, `LaserSource`, `Goal`, `Glass`)**: `is_fallable = true` by default.
+
+#### Movement Constraint for Non-Fallable Objects
+- **No Walking / Moving into the Void**: A non-fallable body attempting to move or be pushed into a position where it would have **no solid support underneath** (`z - 1`) is an **invalid move** and is blocked.
+- For example, if a player is configured as non-fallable (`is_fallable = false`), they **cannot walk off ledges** into empty space.
+
+#### State Settlement (Subframe 2)
+- All unsupported bodies with `is_fallable == true` fall downward by $-1Z$ per pass until reaching a supported rest position or the base ground plane ($z \le 0$).
+- **Lockstep Stack Drop**: Unsupported multi-tier stacks of fallable bodies fall simultaneously in lockstep.
 
 ### Rule 5: Frame 1 Validation Invariant
 Levels authored in the editor must be structurally stable on startup. If any body undergoes spontaneous movement or falling during initial Frame 0* $\to$ Frame 1 settlement before player input, the level is flagged as invalid.

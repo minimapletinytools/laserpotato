@@ -411,6 +411,7 @@ impl Body {
         let mut props = self.kind.default_properties();
         if self.tags.has(TagKind::Fixed) || matches!(self.kind, BlockKind::Wall | BlockKind::Floor) {
             props.is_pushable = false;
+            props.is_fallable = false;
         } else if self.tags.has(TagKind::Pushable) {
             props.is_pushable = true;
         }
@@ -420,6 +421,11 @@ impl Body {
     /// Whether this specific body instance can be pushed.
     pub fn is_pushable(&self) -> bool {
         self.properties().is_pushable
+    }
+
+    /// Whether this specific body is subject to gravity / can fall.
+    pub fn is_fallable(&self) -> bool {
+        self.properties().is_fallable
     }
 
     /// Whether this specific body is fixed/stationary.
