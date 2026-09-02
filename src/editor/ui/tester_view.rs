@@ -85,7 +85,7 @@ pub fn spawn_tester_left_panel(root: &mut ChildSpawnerCommands) {
                             BackgroundColor(theme::BTN_NORMAL),
                         ))
                         .with_children(|b| {
-                            b.spawn((Text::new("⟳"), TextFont::from_font_size(10.0), TextColor(theme::TEXT_PRIMARY)));
+                            b.spawn((Text::new("[R]"), TextFont::from_font_size(10.0), TextColor(theme::TEXT_PRIMARY)));
                         });
                     });
             });
@@ -139,7 +139,7 @@ pub fn spawn_tester_left_panel(root: &mut ChildSpawnerCommands) {
                                 BackgroundColor(theme::BTN_DANGER),
                             ))
                             .with_children(|b| {
-                                b.spawn((Text::new("🗑 Trash"), TextFont::from_font_size(10.0), TextColor(theme::TEXT_PRIMARY)));
+                                b.spawn((Text::new("Trash"), TextFont::from_font_size(10.0), TextColor(theme::TEXT_PRIMARY)));
                             });
                     });
 
@@ -231,7 +231,7 @@ pub fn spawn_tester_left_panel(root: &mut ChildSpawnerCommands) {
                                 BackgroundColor(theme::BTN_NORMAL),
                             ))
                             .with_children(|b| {
-                                b.spawn((Text::new("▲"), TextFont::from_font_size(10.0), TextColor(theme::TEXT_PRIMARY)));
+                                b.spawn((Text::new("^"), TextFont::from_font_size(10.0), TextColor(theme::TEXT_PRIMARY)));
                             });
 
                         scrollbar
@@ -281,7 +281,7 @@ pub fn spawn_tester_left_panel(root: &mut ChildSpawnerCommands) {
                                 BackgroundColor(theme::BTN_NORMAL),
                             ))
                             .with_children(|b| {
-                                b.spawn((Text::new("▼"), TextFont::from_font_size(10.0), TextColor(theme::TEXT_PRIMARY)));
+                                b.spawn((Text::new("v"), TextFont::from_font_size(10.0), TextColor(theme::TEXT_PRIMARY)));
                             });
                     });
             });
@@ -624,7 +624,7 @@ pub fn update_tester_table_ui_system(
     for children in &select_all_btn_query {
         for child in children.iter() {
             if let Ok(mut text) = text_child_query.get_mut(child) {
-                text.0 = if all_selected { "[✓] All".into() } else { "[ ] All".into() };
+                text.0 = if all_selected { "[X] All".into() } else { "[ ] All".into() };
             }
         }
     }
@@ -636,8 +636,8 @@ pub fn update_tester_table_ui_system(
 
     if let Some(header_entity) = header_container_query.iter().next() {
         let arrow = match sort_dir {
-            TesterSortDirection::Ascending => " ▲",
-            TesterSortDirection::Descending => " ▼",
+            TesterSortDirection::Ascending => " ^",
+            TesterSortDirection::Descending => " v",
         };
 
         let col_title = |col: TesterSortColumn, name: &str| -> String {
@@ -738,8 +738,8 @@ pub fn update_tester_table_ui_system(
                     ))
                     .with_children(|b| {
                         b.spawn((
-                            Text::new("📁"),
-                            TextFont::from_font_size(11.0),
+                            Text::new("[D]"),
+                            TextFont::from_font_size(10.0),
                             TextColor(theme::TEXT_CYAN),
                         ));
                     });
@@ -759,7 +759,7 @@ pub fn update_tester_table_ui_system(
                     ))
                     .with_children(|b| {
                         b.spawn((
-                            Text::new(if is_checked { "✓" } else { " " }),
+                            Text::new(if is_checked { "X" } else { " " }),
                             TextFont::from_font_size(10.5),
                             TextColor(if is_checked { Color::srgb(0.4, 0.9, 0.5) } else { theme::TEXT_MUTED }),
                         ));
@@ -998,7 +998,7 @@ pub fn update_tester_table_ui_system(
         if total_count == 0 {
             status_text.0 = "Directory is empty".into();
         } else {
-            status_text.0 = format!("Showing {}–{} of {} items  |  {} selected", start + 1, end, total_count, bulk_count);
+            status_text.0 = format!("Showing {}-{} of {} items  |  {} selected", start + 1, end, total_count, bulk_count);
         }
     }
 

@@ -399,7 +399,7 @@ pub fn extract_tester_dir_entry(path: &str, name: &str) -> TesterLevelEntry {
     TesterLevelEntry {
         path: path.to_string(),
         filename: name.to_string(),
-        name: format!("📁 {}/", name),
+        name: format!("{}/", name),
         description: "Folder".into(),
         is_directory: true,
         macro_steps: 0,
