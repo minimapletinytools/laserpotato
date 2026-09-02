@@ -12,7 +12,7 @@ pub mod result;
 pub mod search;
 pub mod state;
 
-pub use analysis::{analyze_puzzle, PuzzleProfile};
+pub use analysis::{analyze_puzzle, PuzzleProfile, Technique};
 pub use heuristic::{
     CompositeHeuristic, GoalLaserTargetHeuristic, HeuristicKind, PlayerProximityHeuristic,
     PuzzleHeuristic,
@@ -146,6 +146,19 @@ mod tests {
         assert!(profile.redundant_bodies.contains(&c1));
         // Mirror m1 should NOT be redundant (it is load-bearing)
         assert!(!profile.redundant_bodies.contains(&m1));
+    }
+
+    #[test]
+    fn technique_detection_and_valley_scoring_test() {
+        let world = crate::level::test_level();
+        let profile = analyze_puzzle(&world);
+        assert!(profile.is_solvable);
+        assert!(profile.epiphany_score > 0.0);
+        // test_level involves a 3-mirror beam relay into the goal
+        assert!(profile.techniques.contains(&Technique::BeamRelay));
+        // Verify format_report runs cleanly
+        let report = profile.format_report();
+        assert!(report.contains("Puzzle Quality Profile"));
     }
 
     #[test]

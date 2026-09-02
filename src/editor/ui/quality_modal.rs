@@ -193,7 +193,7 @@ pub fn update_quality_modal_ui_system(
                 BackgroundColor(Color::srgba(0.12, 0.10, 0.05, 0.9)),
             )).with_children(|card| {
                 card.spawn((
-                    Text::new(format!("EPIPHANY SCORE: {:.1}", profile.epiphany_score)),
+                    Text::new(format!("EPIPHANY SCORE: {:.1}  |  Valley Depth: {}", profile.epiphany_score, profile.heuristic_valley_depth)),
                     TextFont::from_font_size(13.0),
                     TextColor(theme::TEXT_GOLD),
                 ));
@@ -204,7 +204,37 @@ pub fn update_quality_modal_ui_system(
                 ));
             });
 
-            // Card 3: Load-Bearing Minimality Check
+            // Card 3: Identified Puzzle Techniques
+            if !profile.techniques.is_empty() {
+                content.spawn((
+                    QualityModalItem,
+                    Node {
+                        width: Val::Percent(100.0),
+                        flex_direction: FlexDirection::Column,
+                        padding: UiRect::all(Val::Px(8.0)),
+                        row_gap: Val::Px(4.0),
+                        border: UiRect::all(Val::Px(1.0)),
+                        ..default()
+                    },
+                    BorderColor::all(Color::srgba(0.3, 0.6, 0.9, 0.5)),
+                    BackgroundColor(Color::srgba(0.06, 0.08, 0.12, 0.9)),
+                )).with_children(|card| {
+                    card.spawn((
+                        Text::new("REQUIRED TECHNIQUES:"),
+                        TextFont::from_font_size(13.0),
+                        TextColor(Color::srgb(0.4, 0.8, 1.0)),
+                    ));
+                    for tech in &profile.techniques {
+                        card.spawn((
+                            Text::new(format!("• {} — {}", tech.name(), tech.description())),
+                            TextFont::from_font_size(11.5),
+                            TextColor(theme::TEXT_PRIMARY),
+                        ));
+                    }
+                });
+            }
+
+            // Card 4: Load-Bearing Minimality Check
             content.spawn((
                 QualityModalItem,
                 Node {
