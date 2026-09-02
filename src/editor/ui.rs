@@ -808,10 +808,10 @@ pub fn setup_editor_ui(mut commands: Commands) {
                 FilePickerModal,
                 Node {
                     position_type: PositionType::Absolute,
-                    left: Val::Percent(28.0),
-                    top: Val::Percent(14.0),
-                    width: Val::Px(540.0),
-                    max_height: Val::Px(580.0),
+                    left: Val::Percent(26.0),
+                    top: Val::Percent(10.0),
+                    width: Val::Px(580.0),
+                    height: Val::Px(600.0),
                     flex_direction: FlexDirection::Column,
                     padding: UiRect::all(Val::Px(14.0)),
                     row_gap: Val::Px(8.0),
@@ -853,7 +853,7 @@ pub fn setup_editor_ui(mut commands: Commands) {
                 modal
                     .spawn(Node {
                         width: Val::Percent(100.0),
-                        height: Val::Px(340.0),
+                        height: Val::Px(410.0),
                         flex_direction: FlexDirection::Row,
                         column_gap: Val::Px(6.0),
                         ..default()
@@ -866,7 +866,7 @@ pub fn setup_editor_ui(mut commands: Commands) {
                                 flex_grow: 1.0,
                                 height: Val::Percent(100.0),
                                 flex_direction: FlexDirection::Column,
-                                row_gap: Val::Px(3.0),
+                                row_gap: Val::Px(2.0),
                                 overflow: Overflow::clip_y(),
                                 padding: UiRect::all(Val::Px(4.0)),
                                 border: UiRect::all(Val::Px(1.0)),
@@ -880,7 +880,7 @@ pub fn setup_editor_ui(mut commands: Commands) {
                         content_row
                             .spawn((
                                 Node {
-                                    width: Val::Px(28.0),
+                                    width: Val::Px(32.0),
                                     height: Val::Percent(100.0),
                                     flex_direction: FlexDirection::Column,
                                     align_items: AlignItems::Center,
@@ -911,33 +911,37 @@ pub fn setup_editor_ui(mut commands: Commands) {
                                         b.spawn((Text::new("▲"), TextFont::from_font_size(11.0), TextColor(TEXT_PRIMARY)));
                                     });
 
-                                // Scroll Track + Thumb
+                                // Scroll Track + Thumb (Interactive Track Button)
                                 scrollbar
                                     .spawn((
                                         FilePickerScrollBarTrack,
+                                        Button,
                                         Node {
-                                            width: Val::Px(10.0),
+                                            width: Val::Px(16.0),
                                             flex_grow: 1.0,
                                             margin: UiRect::axes(Val::ZERO, Val::Px(3.0)),
                                             position_type: PositionType::Relative,
                                             border: UiRect::all(Val::Px(1.0)),
                                             ..default()
                                         },
-                                        BorderColor::all(Color::srgba(0.15, 0.2, 0.3, 0.8)),
-                                        BackgroundColor(Color::srgba(0.04, 0.05, 0.07, 0.9)),
+                                        BorderColor::all(Color::srgba(0.25, 0.35, 0.55, 0.8)),
+                                        BackgroundColor(Color::srgba(0.04, 0.05, 0.07, 0.95)),
                                     ))
                                     .with_children(|track| {
                                         // Scroll Thumb
                                         track.spawn((
                                             FilePickerScrollBarThumb,
+                                            Button,
                                             Node {
                                                 position_type: PositionType::Absolute,
                                                 left: Val::ZERO,
                                                 top: Val::Percent(0.0),
                                                 width: Val::Percent(100.0),
                                                 height: Val::Percent(25.0),
+                                                border: UiRect::all(Val::Px(1.0)),
                                                 ..default()
                                             },
+                                            BorderColor::all(Color::srgba(0.5, 0.8, 1.0, 0.9)),
                                             BackgroundColor(Color::srgba(0.35, 0.65, 0.95, 0.85)),
                                         ));
                                     });
@@ -2622,7 +2626,7 @@ pub fn update_file_picker_ui_system(
     }
 
     let total_count = all_items.len();
-    let visible_count = 10;
+    let visible_count = 14;
     let max_offset = total_count.saturating_sub(visible_count);
     editor.file_picker_scroll_offset = editor.file_picker_scroll_offset.min(max_offset);
     let start = editor.file_picker_scroll_offset;
@@ -2674,7 +2678,8 @@ pub fn update_file_picker_ui_system(
                         Button,
                         Node {
                             width: Val::Percent(100.0),
-                            padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                            height: Val::Px(24.0),
+                            padding: UiRect::axes(Val::Px(8.0), Val::Px(2.0)),
                             align_items: AlignItems::Center,
                             ..default()
                         },
@@ -2695,7 +2700,8 @@ pub fn update_file_picker_ui_system(
                         Button,
                         Node {
                             width: Val::Percent(100.0),
-                            padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                            height: Val::Px(24.0),
+                            padding: UiRect::axes(Val::Px(8.0), Val::Px(2.0)),
                             align_items: AlignItems::Center,
                             ..default()
                         },
@@ -2716,7 +2722,8 @@ pub fn update_file_picker_ui_system(
                         Button,
                         Node {
                             width: Val::Percent(100.0),
-                            padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                            height: Val::Px(24.0),
+                            padding: UiRect::axes(Val::Px(8.0), Val::Px(2.0)),
                             align_items: AlignItems::Center,
                             ..default()
                         },

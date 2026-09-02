@@ -132,6 +132,8 @@ pub struct EditorState {
     pub file_picker_dir: String,
     /// Top item scroll offset for the file picker list.
     pub file_picker_scroll_offset: usize,
+    /// Whether user is actively dragging the scrollbar thumb/track.
+    pub file_picker_drag_scrolling: bool,
     /// Flag indicating that the file picker directory contents need refreshing in the UI.
     pub file_picker_dirty: bool,
     /// World state hash when level was last saved/loaded (for detecting unsaved changes).
@@ -217,6 +219,7 @@ impl Default for EditorState {
             file_picker_open: false,
             file_picker_dir: String::from("levels"),
             file_picker_scroll_offset: 0,
+            file_picker_drag_scrolling: false,
             file_picker_dirty: true,
             solutions: Vec::new(),
             solution_picker_open: false,
@@ -399,6 +402,7 @@ impl EditorState {
         self.file_picker_open = true;
         self.file_picker_dirty = true;
         self.file_picker_scroll_offset = 0;
+        self.file_picker_drag_scrolling = false;
         if self.file_picker_dir.is_empty() {
             self.file_picker_dir = "levels".to_string();
         }
@@ -541,6 +545,7 @@ impl Plugin for EditorPlugin {
                     editor_button_clicks_system,
                     file_picker_button_clicks_system,
                     file_picker_keyboard_and_wheel_system,
+                    file_picker_scrollbar_drag_system,
                     solution_picker_button_clicks_system,
                     ui::quality_modal_interaction_system,
                 )
@@ -2077,6 +2082,58 @@ fn file_picker_keyboard_and_wheel_system(
             editor.file_picker_scroll_offset = editor.file_picker_scroll_offset.saturating_add(scroll_delta as usize);
         }
         editor.file_picker_dirty = true;
+    }
+}
+
+/// Handles clicking and dragging directly on the scrollbar track or thumb.
+fn file_picker_scrollbar_drag_system(
+    windows: Query<&Window>,
+    mouse_button: Res<ButtonInput<MouseButton>>,
+    track_query: Query<(&Interaction, &GlobalTransform, &ComputedNode), With<ui::FilePickerScrollBarTrack>>,
+    thumb_query: Query<&Interaction, With<ui::FilePickerScrollBarThumb>>,
+    mut editor: ResMut<EditorState>,
+) {
+    if !editor.file_picker_open {
+        editor.file_picker_drag_scrolling = false;
+        return;
+    }
+
+    let Ok(window) = windows.single() else { return };
+    let Some(cursor_pos) = window.cursor_position() else { return };
+
+    let Ok((track_interaction, track_gt, track_node)) = track_query.single() else { return };
+
+    let thumb_pressed = thumb_query.iter().any(|i| *i == Interaction::Pressed);
+
+    // 1. Mouse just pressed on track or thumb -> begin drag
+    if *track_interaction == Interaction::Pressed || thumb_pressed || (mouse_button.just_pressed(MouseButton::Left) && *track_interaction == Interaction::Hovered) {
+        editor.file_picker_drag_scrolling = true;
+    }
+
+    // 2. Mouse released -> stop drag
+    if mouse_button.just_released(MouseButton::Left) {
+        editor.file_picker_drag_scrolling = false;
+    }
+
+    // 3. Actively dragging or clicked on track
+    if editor.file_picker_drag_scrolling && mouse_button.pressed(MouseButton::Left) {
+        let track_center = track_gt.translation().xy();
+        let track_height = track_node.size().y;
+        if track_height > 1.0 {
+            let track_top = track_center.y - track_height * 0.5;
+            let relative_y = ((cursor_pos.y - track_top) / track_height).clamp(0.0, 1.0);
+
+            let (parent_opt, entries) = crate::level::list_directory_entries(&editor.file_picker_dir);
+            let total_count = (parent_opt.is_some() as usize) + entries.len();
+            let visible_count = 14;
+            let max_offset = total_count.saturating_sub(visible_count);
+
+            let new_offset = (relative_y * max_offset as f32).round() as usize;
+            if editor.file_picker_scroll_offset != new_offset {
+                editor.file_picker_scroll_offset = new_offset;
+                editor.file_picker_dirty = true;
+            }
+        }
     }
 }
 
