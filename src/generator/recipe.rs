@@ -20,12 +20,18 @@ pub struct BlockRecipe {
     pub crates: (u32, u32),
     /// Minimum and maximum number of Glass Blocks.
     pub glass: (u32, u32),
+    /// Minimum and maximum number of multi-cell or combined joined blocks (e.g. Crate+Mirror rigid polyomino).
+    pub combined_blocks: (u32, u32),
+    /// Minimum and maximum number of vertically stacked blocks (e.g. Mirror resting on Crate).
+    pub stacked_blocks: (u32, u32),
     /// Probability that an internal mirror is spawned fixed/stationary instead of pushable.
     pub fixed_mirror_chance: f32,
     /// Probability that a laser source is spawned fixed/stationary instead of pushable.
     pub fixed_laser_chance: f32,
     /// Interior wall obstacle density (0.0 to 1.0).
     pub wall_density: f32,
+    /// Whether to generate structured architectural layouts (chokepoint dividers, pillars, alcoves).
+    pub structured_walls: bool,
 }
 
 impl Default for BlockRecipe {
@@ -35,12 +41,15 @@ impl Default for BlockRecipe {
             omitted_blocks: HashSet::new(),
             laser_sources: (1, 1),
             goals: (1, 1),
-            mirrors: (1, 3),
-            crates: (0, 2),
+            mirrors: (2, 4),
+            crates: (1, 3),
             glass: (0, 1),
-            fixed_mirror_chance: 0.25,
-            fixed_laser_chance: 0.50,
+            combined_blocks: (0, 2),
+            stacked_blocks: (0, 2),
+            fixed_mirror_chance: 0.20,
+            fixed_laser_chance: 0.40,
             wall_density: 0.15,
+            structured_walls: true,
         }
     }
 }

@@ -128,6 +128,14 @@ fn main() {
                 i += 1;
                 config.candidate_spec.recipe.glass = parse_range(&args[i]).expect("Invalid --glass");
             }
+            "--combined" => {
+                i += 1;
+                config.candidate_spec.recipe.combined_blocks = parse_range(&args[i]).expect("Invalid --combined");
+            }
+            "--stacked" => {
+                i += 1;
+                config.candidate_spec.recipe.stacked_blocks = parse_range(&args[i]).expect("Invalid --stacked");
+            }
             "--omit" => {
                 i += 1;
                 for part in args[i].split(',') {
@@ -258,6 +266,7 @@ fn main() {
                     puzzle.profile.epiphany_score,
                     puzzle.profile.load_bearing_factor * 100.0
                 );
+                let _ = std::io::Write::flush(&mut std::io::stdout());
             }
 
             discovered_list.push(puzzle);
