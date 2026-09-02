@@ -160,6 +160,8 @@ impl LevelSolution {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct LevelData {
     pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     pub bodies: Vec<LevelBodyData>,
     #[serde(default)]
     pub solutions: Vec<LevelSolution>,
@@ -187,6 +189,7 @@ impl LevelData {
         }
         Self {
             name: name.into(),
+            description: None,
             bodies,
             solutions,
             quality_profile,
@@ -365,6 +368,142 @@ pub fn list_directory_entries(dir_path: &str) -> (Option<String>, Vec<FilePicker
     });
 
     (parent_path, entries)
+}
+
+/// Summary metadata row for the Level Tester browser table.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TesterLevelEntry {
+    pub path: String,
+    pub filename: String,
+    pub name: String,
+    pub description: String,
+    pub macro_steps: u32,
+    pub atomic_turns: u32,
+    pub epiphany: f32,
+    pub width: i32,
+    pub height: i32,
+    pub depth: i32,
+    pub mirrors: u32,
+    pub crates: u32,
+    pub polyominos: u32,
+    pub lasers: u32,
+    pub goals: u32,
+    pub total_blocks: u32,
+    pub load_bearing_pct: f32,
+    pub has_comment: bool,
+}
+
+/// Extract summary metadata from a level file for the Level Tester table.
+pub fn extract_tester_level_entry(path: &str, filename: &str) -> Option<TesterLevelEntry> {
+    let lvl = load_level_from_file(path).ok()?;
+    let macro_steps = lvl
+        .quality_profile
+        .as_ref()
+        .map(|p| p.macro_steps as u32)
+        .or_else(|| {
+            lvl.solutions
+                .first()
+                .and_then(|s| s.profile.as_ref())
+                .map(|p| p.macro_steps as u32)
+        })
+        .unwrap_or(0);
+
+    let atomic_turns = lvl
+        .quality_profile
+        .as_ref()
+        .map(|p| p.atomic_turns as u32)
+        .or_else(|| {
+            lvl.solutions
+                .first()
+                .and_then(|s| s.profile.as_ref())
+                .map(|p| p.atomic_turns as u32)
+        })
+        .or_else(|| lvl.solutions.first().map(|s| s.actions.len() as u32))
+        .unwrap_or(0);
+
+    let epiphany = lvl
+        .quality_profile
+        .as_ref()
+        .map(|p| p.epiphany_score)
+        .or_else(|| {
+            lvl.solutions
+                .first()
+                .and_then(|s| s.profile.as_ref())
+                .map(|p| p.epiphany_score)
+        })
+        .unwrap_or(0.0);
+
+    let load_bearing_pct = lvl
+        .quality_profile
+        .as_ref()
+        .map(|p| p.load_bearing_factor * 100.0)
+        .unwrap_or(100.0);
+
+    let mut min_x = i32::MAX;
+    let mut max_x = i32::MIN;
+    let mut min_y = i32::MAX;
+    let mut max_y = i32::MIN;
+    let mut min_z = i32::MAX;
+    let mut max_z = i32::MIN;
+
+    let mut mirrors = 0;
+    let mut crates = 0;
+    let mut lasers = 0;
+    let mut goals = 0;
+    let mut polyomino_groups = std::collections::HashSet::new();
+
+    for b in &lvl.bodies {
+        min_x = min_x.min(b.anchor[0]);
+        max_x = max_x.max(b.anchor[0]);
+        min_y = min_y.min(b.anchor[1]);
+        max_y = max_y.max(b.anchor[1]);
+        min_z = min_z.min(b.anchor[2]);
+        max_z = max_z.max(b.anchor[2]);
+
+        match b.kind {
+            BlockKind::Mirror => mirrors += 1,
+            BlockKind::Pushable => crates += 1,
+            BlockKind::LaserSource => lasers += 1,
+            BlockKind::Goal => goals += 1,
+            _ => {}
+        }
+        if let Some(g) = b.combined_group {
+            polyomino_groups.insert(g);
+        }
+    }
+
+    let width = if min_x <= max_x { max_x - min_x + 1 } else { 0 };
+    let height = if min_y <= max_y { max_y - min_y + 1 } else { 0 };
+    let depth = if min_z <= max_z { max_z - min_z + 1 } else { 0 };
+    let polyominos = polyomino_groups.len() as u32;
+    let total_blocks = mirrors + crates + lasers + goals;
+    let description = lvl.description.clone().unwrap_or_default();
+    let has_comment = !description.trim().is_empty();
+
+    Some(TesterLevelEntry {
+        path: path.to_string(),
+        filename: filename.to_string(),
+        name: if lvl.name.is_empty() {
+            filename.to_string()
+        } else {
+            lvl.name
+        },
+        description,
+        macro_steps,
+        atomic_turns,
+        epiphany,
+        width,
+        height,
+        depth,
+        mirrors,
+        crates,
+        polyominos,
+        lasers,
+        goals,
+        total_blocks,
+        load_bearing_pct,
+        has_comment,
+    })
 }
 
 #[cfg(test)]

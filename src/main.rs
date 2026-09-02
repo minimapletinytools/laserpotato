@@ -1,17 +1,10 @@
 use std::env;
-use std::time::Duration;
-
 use bevy::prelude::*;
 
-pub use laserpotato::{block_types, camera, editor, input, laser, level, render, sim, solver, turn, GameState, PlaybackState};
-
-/// Marker component for the playtest/playback banner.
-#[derive(Component)]
-pub struct VictoryBanner;
-
-/// Marker for the text inside the playtest/playback victory banner.
-#[derive(Component)]
-pub struct VictoryBannerText;
+pub use laserpotato::{
+    block_types, camera, editor, input, laser, level, playback::{self, PlaybackState},
+    play_ui::{self, VictoryBanner, VictoryBannerText}, render, sim, solver, turn, GameState,
+};
 
 /// Configuration for automated screenshot capture and self-render testing.
 #[derive(Resource)]
@@ -31,10 +24,21 @@ impl Default for ScreenshotConfig {
     }
 }
 
+/// Configuration for initial level loaded on startup.
+#[derive(Resource, Default)]
+pub struct InitialLevelConfig {
+    pub path: Option<String>,
+}
+
+/// Configuration for initial app mode on startup.
+#[derive(Resource, Default)]
+pub struct InitialModeConfig(pub editor::AppMode);
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     let mut replay_file = None;
     let mut screenshot_path = None;
+    let mut level_file = None;
     let mut target_frame = 20;
     let mut initial_mode = editor::AppMode::Editor;
 
@@ -47,6 +51,12 @@ fn main() {
                     replay_file = Some(args[i].clone());
                 } else {
                     replay_file = Some(String::from("solution.json"));
+                }
+            }
+            "-l" | "--level" => {
+                if i + 1 < args.len() && !args[i + 1].starts_with('-') {
+                    i += 1;
+                    level_file = Some(args[i].clone());
                 }
             }
             "-s" | "--screenshot" => {
@@ -70,6 +80,12 @@ fn main() {
             }
             "--editor" => {
                 initial_mode = editor::AppMode::Editor;
+            }
+            "--tester" => {
+                initial_mode = editor::AppMode::LevelTester;
+            }
+            pos if !pos.starts_with('-') && pos.ends_with(".json") => {
+                level_file = Some(pos.to_string());
             }
             _ => {}
         }
@@ -106,8 +122,13 @@ fn main() {
         target_frame,
     };
 
+    let initial_level_config = InitialLevelConfig {
+        path: level_file,
+    };
+
     let mut app = App::new();
-    app.add_plugins(DefaultPlugins.set(WindowPlugin {
+    app.insert_resource(ClearColor(Color::srgb(0.12, 0.12, 0.14)))
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Laser Potato - Level Editor & Engine".into(),
                 resolution: (1200, 800).into(),
@@ -117,6 +138,8 @@ fn main() {
         }))
         .insert_resource(playback)
         .insert_resource(screenshot_config)
+        .insert_resource(initial_level_config)
+        .insert_resource(InitialModeConfig(initial_mode))
         .add_plugins(editor::EditorPlugin)
         .add_systems(
             Startup,
@@ -129,23 +152,18 @@ fn main() {
         .add_systems(
             Update,
             (
-                playback_system.run_if(in_state(editor::AppMode::Playback)),
+                playback::playback_system.run_if(in_state(editor::AppMode::Playback)),
                 input::keyboard_input_system.run_if(in_state(editor::AppMode::Playtest)),
-                render::sync_bodies.after(input::keyboard_input_system),
-                render::sync_lasers.after(input::keyboard_input_system),
+                render::sync_bodies,
+                render::sync_lasers.after(render::sync_bodies),
                 render::animate_laser_pfx,
                 render::draw_coordinate_gizmo,
                 render::draw_grid_gizmos,
                 render::draw_combined_group_gizmos,
-                update_victory_ui,
+                play_ui::update_victory_ui,
                 screenshot_system,
             ),
         );
-
-    // Initial state dispatch
-    if initial_mode != editor::AppMode::Editor {
-        app.insert_state(initial_mode);
-    }
 
     app.run();
 }
@@ -181,10 +199,41 @@ fn screenshot_system(
     }
 }
 
-/// Create the simulation world from the test level, spawn camera, lights, and HUD.
-fn setup_game(mut commands: Commands) {
+/// Create the simulation world from the test level or custom level, spawn camera, lights, and HUD.
+fn setup_game(
+    mut commands: Commands,
+    initial_lvl: Res<InitialLevelConfig>,
+    initial_mode_cfg: Res<InitialModeConfig>,
+    mut editor: ResMut<editor::EditorState>,
+    mut next_mode: ResMut<NextState<editor::AppMode>>,
+) {
+    if initial_mode_cfg.0 != editor::AppMode::Editor {
+        next_mode.set(initial_mode_cfg.0);
+    }
     // --- simulation -------------------------------------------------------
-    let world = level::test_level();
+    let (world, path_str, sols, profile) = if let Some(path) = &initial_lvl.path {
+        match level::load_level_from_file(path) {
+            Ok(lvl) => {
+                let p = path.clone();
+                let s = lvl.solutions.clone();
+                let prof = lvl.quality_profile.clone();
+                println!("[✓] Loaded initial level: {} ({} bodies)", lvl.name, lvl.bodies.len());
+                (lvl.to_world(), p, s, prof)
+            }
+            Err(e) => {
+                eprintln!("[!] Failed to load level '{}': {}", path, e);
+                (level::test_level(), "levels/custom_puzzle.json".to_string(), Vec::new(), None)
+            }
+        }
+    } else {
+        (level::test_level(), "levels/custom_puzzle.json".to_string(), Vec::new(), None)
+    };
+
+    editor.current_level_path = path_str;
+    editor.solutions = sols;
+    editor.puzzle_profile = profile;
+    editor.last_saved_hash = level::compute_level_hash(&world);
+
     let engine = turn::TurnEngine::new(world);
     commands.insert_resource(GameState { engine });
 
@@ -219,30 +268,7 @@ fn setup_game(mut commands: Commands) {
     ));
 
     // --- Playtest & Victory Banner (active during Playtest & Playback) ----
-    commands
-        .spawn((
-            VictoryBanner,
-            Node {
-                position_type: PositionType::Absolute,
-                top: Val::Px(16.0),
-                left: Val::Percent(15.0),
-                right: Val::Percent(15.0),
-                padding: UiRect::all(Val::Px(10.0)),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            BackgroundColor(Color::srgba(0.05, 0.05, 0.08, 0.88)),
-            Visibility::Hidden,
-        ))
-        .with_children(|parent| {
-            parent.spawn((
-                VictoryBannerText,
-                Text::new("Objective: Direct the laser to strike the Goal Pyramid\n[W/S / Up/Down] Move  |  [A/D / Left/Right] Turn  |  [Esc] Editor  |  [Z] Undo  |  [R] Reset"),
-                TextFont::from_font_size(14.0),
-                TextColor(Color::srgb(0.9, 0.9, 0.95)),
-            ));
-        });
+    play_ui::spawn_victory_banner(&mut commands);
 
     // --- Coordinate Gizmo Legend (bottom left of viewport) --------------
     if render::SHOW_COORDINATE_LEGEND {
@@ -261,151 +287,8 @@ fn setup_game(mut commands: Commands) {
                 parent.spawn((
                     Text::new("Game Axes (RHS)\n+X: Right (Red)\n+Y: Forward (Green)\n+Z: Up (Blue)"),
                     TextFont::from_font_size(13.0),
-                    TextColor(Color::srgb(0.9, 0.9, 0.95)),
+                    TextColor(Color::srgb(0.9, 0.95, 1.0)),
                 ));
             });
-    }
-}
-
-/// Controls automated and manual step-by-step playback of a loaded solution.
-fn playback_system(
-    time: Res<Time>,
-    keys: Res<ButtonInput<KeyCode>>,
-    mut playback: ResMut<PlaybackState>,
-    mut game: ResMut<GameState>,
-) {
-    if !playback.is_playback {
-        return;
-    }
-
-    // Toggle Play / Pause
-    if keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::KeyP) {
-        playback.auto_playing = !playback.auto_playing;
-    }
-
-    // Speed Controls: - / _ or [ decreases speed, + / = or ] increases speed
-    if keys.just_pressed(KeyCode::Minus) || keys.just_pressed(KeyCode::NumpadSubtract) || keys.just_pressed(KeyCode::BracketLeft) {
-        let new_speed = (playback.speed * 0.75).clamp(0.2, 10.0);
-        playback.speed = new_speed;
-        playback.step_timer.set_duration(Duration::from_secs_f32(0.40 / new_speed));
-    } else if keys.just_pressed(KeyCode::Equal) || keys.just_pressed(KeyCode::NumpadAdd) || keys.just_pressed(KeyCode::BracketRight) {
-        let new_speed = (playback.speed * 1.5).clamp(0.2, 10.0);
-        playback.speed = new_speed;
-        playback.step_timer.set_duration(Duration::from_secs_f32(0.40 / new_speed));
-    }
-
-    // Manual Step Forward
-    if keys.just_pressed(KeyCode::ArrowRight) || keys.just_pressed(KeyCode::Period) {
-        if playback.current_index < playback.actions.len() {
-            let action = playback.actions[playback.current_index];
-            game.engine.apply(action);
-            playback.current_index += 1;
-        }
-    }
-
-    // Manual Step Backward (Undo)
-    if keys.just_pressed(KeyCode::ArrowLeft) || keys.just_pressed(KeyCode::Comma) {
-        if playback.current_index > 0 {
-            game.engine.apply(turn::PlayerAction::Undo);
-            playback.current_index -= 1;
-        }
-    }
-
-    // Restart Playback
-    if keys.just_pressed(KeyCode::KeyR) {
-        game.engine.apply(turn::PlayerAction::Reset);
-        playback.current_index = 0;
-        playback.auto_playing = true;
-    }
-
-    // Automatic Step Progression
-    if playback.auto_playing && !game.engine.outcome.is_game_over() {
-        playback.step_timer.tick(time.delta());
-        if playback.step_timer.just_finished() && playback.current_index < playback.actions.len() {
-            let action = playback.actions[playback.current_index];
-            game.engine.apply(action);
-            playback.current_index += 1;
-        }
-    }
-}
-
-/// Update victory / objective / playback HUD banner during Playtest and Playback modes.
-fn update_victory_ui(
-    app_mode: Res<State<editor::AppMode>>,
-    playback: Res<PlaybackState>,
-    game: Res<GameState>,
-    mut banner_query: Query<&mut Visibility, With<VictoryBanner>>,
-    mut text_query: Query<(&mut Text, &mut TextColor), With<VictoryBannerText>>,
-) {
-    let mode = *app_mode.get();
-    let is_active_mode = mode != editor::AppMode::Editor;
-
-    for mut vis in &mut banner_query {
-        *vis = if is_active_mode {
-            Visibility::Visible
-        } else {
-            Visibility::Hidden
-        };
-    }
-
-    if !is_active_mode {
-        return;
-    }
-
-    for (mut text, mut color) in &mut text_query {
-        if mode == editor::AppMode::Playback {
-            if game.engine.is_won() {
-                text.0 = format!(
-                    "*** PLAYBACK COMPLETE: Goal Struck in {} Steps! ***\n[Esc] Return to Editor  |  [R] Replay  |  [< / >] Step  |  [- / +] Speed ({:.1}x)",
-                    playback.current_index,
-                    playback.speed
-                );
-                color.0 = Color::srgb(0.3, 1.0, 0.7);
-            } else if game.engine.is_lost() {
-                text.0 = format!(
-                    "!!! PLAYBACK: Laser Vaporized Player at Step {} !!!\n[Esc] Return to Editor  |  [R] Restart  |  [<] Step Back  |  [- / +] Speed ({:.1}x)",
-                    playback.current_index,
-                    playback.speed
-                );
-                color.0 = Color::srgb(1.0, 0.3, 0.3);
-            } else {
-                let status_label = if playback.auto_playing { "[Playing]" } else { "[Paused]" };
-                let next_action_str = if playback.current_index < playback.actions.len() {
-                    format!("Next: {:?}", playback.actions[playback.current_index])
-                } else {
-                    "End of sequence".into()
-                };
-
-                text.0 = format!(
-                    "TESTING WITH SOLUTION ({:.1}x speed) - {} Step {} / {} ({})\n[Space] Play/Pause  |  [< / >] Step  |  [- / +] Speed  |  [Esc] Return to Editor  |  [R] Restart",
-                    playback.speed,
-                    status_label,
-                    playback.current_index,
-                    playback.actions.len(),
-                    next_action_str
-                );
-                color.0 = Color::srgb(0.3, 1.0, 0.6); // Green indicator
-            }
-        } else if mode == editor::AppMode::Playtest {
-            if let Some(err) = &game.engine.validation_error {
-                text.0 = format!("! INVALID LEVEL: {}\n[Esc] Return to Editor", err);
-                color.0 = Color::srgb(1.0, 0.35, 0.35);
-            } else {
-                match game.engine.outcome {
-                    turn::GameOutcome::Won => {
-                        text.0 = "*** LEVEL COMPLETE! Laser Struck Goal Pyramid! ***\n[Esc] Return to Editor  |  [Z] Undo  |  [R] Reset".into();
-                        color.0 = Color::srgb(0.3, 1.0, 0.7);
-                    }
-                    turn::GameOutcome::Lost => {
-                        text.0 = "!!! GAME OVER! Laser Vaporized Player! !!!\n[Esc] Return to Editor  |  [Z] Undo  |  [R] Reset".into();
-                        color.0 = Color::srgb(1.0, 0.3, 0.3);
-                    }
-                    turn::GameOutcome::InProgress => {
-                        text.0 = "PLAYTEST MODE: Direct laser to Goal Pyramid\n[W/S / Up/Down] Move  |  [A/D / Left/Right] Turn  |  [Esc] Return to Editor  |  [Z] Undo  |  [R] Reset".into();
-                        color.0 = Color::srgb(0.9, 0.95, 1.0);
-                    }
-                }
-            }
-        }
     }
 }

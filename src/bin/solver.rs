@@ -20,9 +20,10 @@ fn print_help() {
         r#"Laser Potato Automated Puzzle Solver & Quality Profiler
 
 USAGE:
-    solver [OPTIONS]
+    solver [OPTIONS] [LEVEL_PATH]
 
 OPTIONS:
+    -l, --level <file>           Path to level JSON file to solve [default: test_level]
     -a, --algorithm <algo>       Search algorithm: bfs, astar, best_first [default: astar]
     -h, --heuristic <heuristic>  Heuristic function: composite, goal_laser, none [default: composite]
     -d, --max-depth <N>          Maximum search depth in macro moves [default: 50]
@@ -43,6 +44,7 @@ fn main() {
     let mut verbose = false;
     let mut analyze = false;
     let mut output_path = String::from("solution.json");
+    let mut level_path: Option<String> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -50,6 +52,12 @@ fn main() {
             "--help" => {
                 print_help();
                 return;
+            }
+            "-l" | "--level" => {
+                i += 1;
+                if i < args.len() {
+                    level_path = Some(args[i].clone());
+                }
             }
             "-a" | "--algorithm" => {
                 i += 1;
@@ -115,6 +123,9 @@ fn main() {
             "--analyze" => {
                 analyze = true;
             }
+            pos_arg if !pos_arg.starts_with('-') => {
+                level_path = Some(pos_arg.to_string());
+            }
             unknown => {
                 eprintln!("Unknown option '{}'. Use --help for usage.", unknown);
             }
@@ -122,9 +133,25 @@ fn main() {
         i += 1;
     }
 
+    let (initial_world, level_name) = if let Some(path) = &level_path {
+        match level::load_level_from_file(path) {
+            Ok(lvl) => {
+                let name = if lvl.name.is_empty() { path.clone() } else { lvl.name.clone() };
+                (lvl.to_world(), name)
+            }
+            Err(e) => {
+                eprintln!("Failed to load level file '{}': {}", path, e);
+                std::process::exit(1);
+            }
+        }
+    } else {
+        (level::test_level(), "Built-in Test Level".to_string())
+    };
+
     println!("==================================================");
     println!("           LASER POTATO PUZZLE SOLVER             ");
     println!("==================================================");
+    println!("Level:      {}", level_name);
     println!("Algorithm:  {:?}", config.algorithm);
     println!("Heuristic:  {:?}", config.heuristic);
     println!("Max Depth:  {:?}", config.max_depth.unwrap_or(0));
@@ -133,7 +160,6 @@ fn main() {
     println!("Output:     {}", output_path);
     println!("--------------------------------------------------");
 
-    let initial_world = level::test_level();
     println!("Loaded puzzle level: {} bodies in grid.", initial_world.bodies().len());
     println!("Searching for solution...");
 

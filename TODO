@@ -25,7 +25,7 @@
 
 -make level editor window resizeable if not already
 
--create glass block (moveable/immoveable) transparent block that laser just passes through.
+DONE-create glass block (moveable/immoveable) transparent block that laser just passes through.
 
 
 -improve visual language for testing
@@ -49,6 +49,7 @@
 :: 8/24/2026 MVP
 
 MVP goal is get game to a state with minimal mechanics so you can start designing puzzles
+
 
 -fix state issue in level editor
 -think through state/movement logic ordering (see how other games do it)
@@ -142,6 +143,33 @@ DONE-new movement rules
     -moveable blocks move together when stacked
     -if a moveable block has nothing underneath it it should fall, this is a STATE triggered move rather than a move triggered move, so it will not ahppen on the same subframe as the block underneath it being removed.
 
+DONE-lets add a new mode to the level editor which is the level tester mode. in this mode, you have a level selector menu on the left and the level preview ont he right. The top menu changes a bit. now it has the following options:
+    -open in editor
+    -play
+    -play with solution
+    -delete
+    -add comment
+    -rename + promote
+
+DONE-escaping play returns you bakc to the level selector with that level
+
+
+DONE-the left hand level browser menu has the folder stuff, and the vertical slider stuff like the current file picker. but in addition, it has additional collumns showing information that allows you to sort the levels. actualyl design it as follows
+    -has an expandadble "show more >" that shows additional collumns
+    -the collumns have stuff like levelzize, epiphany score, interactiable elemnts etc, the stats from the miner basically
+    -the columns can be sorted on
+    -have ah orizontal silder if needed
+    -has a little select box allowing us to bulk select multiple levers and the nhit atrash button to bulk delete them
+DONE-add does fall property diferent than moveableok, 
+
+
+-level tester fixes
+    -clicking on scroll does not work
+    -scrolling zooms both the stage and scrolls the picker, the picker needs to captur eth scroll ipnut
+    -the "testing with solution" dialog doesn't go away when you leave testing 
+    -play solution does'tn let you pick speed
+-holding backspace in text editor boxes doesn't dow hat you want it to do
+
 -consider adding level boundary rules... rather than rely on blacks... walking on outer wall is a cool mechanic..
 
 -rework left side menu
@@ -150,6 +178,14 @@ DONE-new movement rules
 
 -add a little x y z gizmo at the origin so we can easily tell the level orientation
 -add grid numbers along the x/y=0 axis 
+
+-generalize movement if you haven't already, a block can have a controller property and queues block moves based inputs, with what block move being queued based on movement style
+    -add the rolling movement style 
+        -comes in 2 variants, ball(turns per move) and block. block is alawys 1 turn per move, the difference with block is that it takes up "vertical" space when rolled so it can be rolled if there's a roof
+
+-create a rolling mirror
+    -both ball and block style
+    -block style maybe yo ufollow blokc after pushing or no?
 
 
 
