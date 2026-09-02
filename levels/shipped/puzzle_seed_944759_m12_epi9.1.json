@@ -1,5 +1,5 @@
 {
-  "name": "Custom Level",
+  "name": "Mined Seed 944759 (12m, Epi 9.1)",
   "bodies": [
     {
       "kind": "Floor",
@@ -31,6 +31,35 @@
       "combined_group": null
     },
     {
+      "kind": "Wall",
+      "anchor": [
+        0,
+        0,
+        0
+      ],
+      "orientation": {
+        "mat": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "fixed": true,
+      "combined_group": null
+    },
+    {
       "kind": "Floor",
       "anchor": [
         0,
@@ -60,6 +89,35 @@
       "combined_group": null
     },
     {
+      "kind": "Wall",
+      "anchor": [
+        0,
+        1,
+        0
+      ],
+      "orientation": {
+        "mat": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "fixed": true,
+      "combined_group": null
+    },
+    {
       "kind": "Floor",
       "anchor": [
         0,
@@ -89,6 +147,35 @@
       "combined_group": null
     },
     {
+      "kind": "Wall",
+      "anchor": [
+        0,
+        2,
+        0
+      ],
+      "orientation": {
+        "mat": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "fixed": true,
+      "combined_group": null
+    },
+    {
       "kind": "Floor",
       "anchor": [
         0,
@@ -118,6 +205,35 @@
       "combined_group": null
     },
     {
+      "kind": "Wall",
+      "anchor": [
+        0,
+        3,
+        0
+      ],
+      "orientation": {
+        "mat": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "fixed": true,
+      "combined_group": null
+    },
+    {
       "kind": "Floor",
       "anchor": [
         0,
@@ -147,6 +263,35 @@
       "combined_group": null
     },
     {
+      "kind": "Wall",
+      "anchor": [
+        0,
+        4,
+        0
+      ],
+      "orientation": {
+        "mat": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "fixed": true,
+      "combined_group": null
+    },
+    {
       "kind": "Floor",
       "anchor": [
         0,
@@ -176,6 +321,35 @@
       "combined_group": null
     },
     {
+      "kind": "Wall",
+      "anchor": [
+        0,
+        5,
+        0
+      ],
+      "orientation": {
+        "mat": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "fixed": true,
+      "combined_group": null
+    },
+    {
       "kind": "Floor",
       "anchor": [
         0,
@@ -205,6 +379,35 @@
       "combined_group": null
     },
     {
+      "kind": "Wall",
+      "anchor": [
+        0,
+        6,
+        0
+      ],
+      "orientation": {
+        "mat": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "fixed": true,
+      "combined_group": null
+    },
+    {
       "kind": "Floor",
       "anchor": [
         0,
@@ -234,40 +437,11 @@
       "combined_group": null
     },
     {
-      "kind": "Floor",
+      "kind": "Wall",
       "anchor": [
         0,
-        8,
-        -1
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Floor",
-      "anchor": [
-        0,
-        9,
-        -1
+        7,
+        0
       ],
       "orientation": {
         "mat": [
@@ -321,6 +495,35 @@
       "combined_group": null
     },
     {
+      "kind": "Wall",
+      "anchor": [
+        1,
+        0,
+        0
+      ],
+      "orientation": {
+        "mat": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "fixed": true,
+      "combined_group": null
+    },
+    {
       "kind": "Floor",
       "anchor": [
         1,
@@ -524,40 +727,11 @@
       "combined_group": null
     },
     {
-      "kind": "Floor",
+      "kind": "Wall",
       "anchor": [
         1,
-        8,
-        -1
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Floor",
-      "anchor": [
-        1,
-        9,
-        -1
+        7,
+        0
       ],
       "orientation": {
         "mat": [
@@ -611,6 +785,35 @@
       "combined_group": null
     },
     {
+      "kind": "Wall",
+      "anchor": [
+        2,
+        0,
+        0
+      ],
+      "orientation": {
+        "mat": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "fixed": true,
+      "combined_group": null
+    },
+    {
       "kind": "Floor",
       "anchor": [
         2,
@@ -814,40 +1017,11 @@
       "combined_group": null
     },
     {
-      "kind": "Floor",
+      "kind": "Wall",
       "anchor": [
         2,
-        8,
-        -1
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Floor",
-      "anchor": [
-        2,
-        9,
-        -1
+        7,
+        0
       ],
       "orientation": {
         "mat": [
@@ -901,6 +1075,35 @@
       "combined_group": null
     },
     {
+      "kind": "Wall",
+      "anchor": [
+        3,
+        0,
+        0
+      ],
+      "orientation": {
+        "mat": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "fixed": true,
+      "combined_group": null
+    },
+    {
       "kind": "Floor",
       "anchor": [
         3,
@@ -1104,40 +1307,11 @@
       "combined_group": null
     },
     {
-      "kind": "Floor",
+      "kind": "Wall",
       "anchor": [
         3,
-        8,
-        -1
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Floor",
-      "anchor": [
-        3,
-        9,
-        -1
+        7,
+        0
       ],
       "orientation": {
         "mat": [
@@ -1191,6 +1365,35 @@
       "combined_group": null
     },
     {
+      "kind": "Wall",
+      "anchor": [
+        4,
+        0,
+        0
+      ],
+      "orientation": {
+        "mat": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "fixed": true,
+      "combined_group": null
+    },
+    {
       "kind": "Floor",
       "anchor": [
         4,
@@ -1394,40 +1597,11 @@
       "combined_group": null
     },
     {
-      "kind": "Floor",
+      "kind": "Wall",
       "anchor": [
         4,
-        8,
-        -1
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Floor",
-      "anchor": [
-        4,
-        9,
-        -1
+        7,
+        0
       ],
       "orientation": {
         "mat": [
@@ -1481,6 +1655,35 @@
       "combined_group": null
     },
     {
+      "kind": "Wall",
+      "anchor": [
+        5,
+        0,
+        0
+      ],
+      "orientation": {
+        "mat": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "fixed": true,
+      "combined_group": null
+    },
+    {
       "kind": "Floor",
       "anchor": [
         5,
@@ -1684,40 +1887,11 @@
       "combined_group": null
     },
     {
-      "kind": "Floor",
+      "kind": "Wall",
       "anchor": [
         5,
-        8,
-        -1
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Floor",
-      "anchor": [
-        5,
-        9,
-        -1
+        7,
+        0
       ],
       "orientation": {
         "mat": [
@@ -1771,6 +1945,35 @@
       "combined_group": null
     },
     {
+      "kind": "Wall",
+      "anchor": [
+        6,
+        0,
+        0
+      ],
+      "orientation": {
+        "mat": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "fixed": true,
+      "combined_group": null
+    },
+    {
       "kind": "Floor",
       "anchor": [
         6,
@@ -1974,40 +2177,11 @@
       "combined_group": null
     },
     {
-      "kind": "Floor",
+      "kind": "Wall",
       "anchor": [
         6,
-        8,
-        -1
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Floor",
-      "anchor": [
-        6,
-        9,
-        -1
+        7,
+        0
       ],
       "orientation": {
         "mat": [
@@ -2061,272 +2235,11 @@
       "combined_group": null
     },
     {
-      "kind": "Floor",
+      "kind": "Wall",
       "anchor": [
         7,
-        1,
-        -1
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Floor",
-      "anchor": [
-        7,
-        2,
-        -1
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Floor",
-      "anchor": [
-        7,
-        3,
-        -1
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Floor",
-      "anchor": [
-        7,
-        4,
-        -1
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Floor",
-      "anchor": [
-        7,
-        5,
-        -1
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Floor",
-      "anchor": [
-        7,
-        6,
-        -1
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Floor",
-      "anchor": [
-        7,
-        7,
-        -1
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Floor",
-      "anchor": [
-        7,
-        8,
-        -1
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Floor",
-      "anchor": [
-        7,
-        9,
-        -1
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Floor",
-      "anchor": [
-        8,
         0,
-        -1
+        0
       ],
       "orientation": {
         "mat": [
@@ -2353,7 +2266,7 @@
     {
       "kind": "Floor",
       "anchor": [
-        8,
+        7,
         1,
         -1
       ],
@@ -2380,272 +2293,11 @@
       "combined_group": null
     },
     {
-      "kind": "Floor",
+      "kind": "Wall",
       "anchor": [
-        8,
-        2,
-        -1
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Floor",
-      "anchor": [
-        8,
-        3,
-        -1
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Floor",
-      "anchor": [
-        8,
-        4,
-        -1
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Floor",
-      "anchor": [
-        8,
-        5,
-        -1
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Floor",
-      "anchor": [
-        8,
-        6,
-        -1
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Floor",
-      "anchor": [
-        8,
         7,
-        -1
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Floor",
-      "anchor": [
-        8,
-        8,
-        -1
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Floor",
-      "anchor": [
-        8,
-        9,
-        -1
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Floor",
-      "anchor": [
-        9,
-        0,
-        -1
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Floor",
-      "anchor": [
-        9,
         1,
-        -1
+        0
       ],
       "orientation": {
         "mat": [
@@ -2672,7 +2324,7 @@
     {
       "kind": "Floor",
       "anchor": [
-        9,
+        7,
         2,
         -1
       ],
@@ -2699,9 +2351,38 @@
       "combined_group": null
     },
     {
+      "kind": "Wall",
+      "anchor": [
+        7,
+        2,
+        0
+      ],
+      "orientation": {
+        "mat": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "fixed": true,
+      "combined_group": null
+    },
+    {
       "kind": "Floor",
       "anchor": [
-        9,
+        7,
         3,
         -1
       ],
@@ -2728,9 +2409,38 @@
       "combined_group": null
     },
     {
+      "kind": "Wall",
+      "anchor": [
+        7,
+        3,
+        0
+      ],
+      "orientation": {
+        "mat": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "fixed": true,
+      "combined_group": null
+    },
+    {
       "kind": "Floor",
       "anchor": [
-        9,
+        7,
         4,
         -1
       ],
@@ -2757,9 +2467,38 @@
       "combined_group": null
     },
     {
+      "kind": "Wall",
+      "anchor": [
+        7,
+        4,
+        0
+      ],
+      "orientation": {
+        "mat": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "fixed": true,
+      "combined_group": null
+    },
+    {
       "kind": "Floor",
       "anchor": [
-        9,
+        7,
         5,
         -1
       ],
@@ -2786,9 +2525,38 @@
       "combined_group": null
     },
     {
+      "kind": "Wall",
+      "anchor": [
+        7,
+        5,
+        0
+      ],
+      "orientation": {
+        "mat": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "fixed": true,
+      "combined_group": null
+    },
+    {
       "kind": "Floor",
       "anchor": [
-        9,
+        7,
         6,
         -1
       ],
@@ -2815,9 +2583,38 @@
       "combined_group": null
     },
     {
+      "kind": "Wall",
+      "anchor": [
+        7,
+        6,
+        0
+      ],
+      "orientation": {
+        "mat": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "fixed": true,
+      "combined_group": null
+    },
+    {
       "kind": "Floor",
       "anchor": [
-        9,
+        7,
         7,
         -1
       ],
@@ -2844,11 +2641,11 @@
       "combined_group": null
     },
     {
-      "kind": "Floor",
+      "kind": "Wall",
       "anchor": [
-        9,
-        8,
-        -1
+        7,
+        7,
+        0
       ],
       "orientation": {
         "mat": [
@@ -2873,11 +2670,98 @@
       "combined_group": null
     },
     {
-      "kind": "Floor",
+      "kind": "Wall",
       "anchor": [
-        9,
-        9,
-        -1
+        1,
+        4,
+        0
+      ],
+      "orientation": {
+        "mat": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "fixed": true,
+      "combined_group": null
+    },
+    {
+      "kind": "Wall",
+      "anchor": [
+        2,
+        4,
+        0
+      ],
+      "orientation": {
+        "mat": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "fixed": true,
+      "combined_group": null
+    },
+    {
+      "kind": "Wall",
+      "anchor": [
+        3,
+        4,
+        0
+      ],
+      "orientation": {
+        "mat": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "fixed": true,
+      "combined_group": null
+    },
+    {
+      "kind": "Wall",
+      "anchor": [
+        4,
+        4,
+        0
       ],
       "orientation": {
         "mat": [
@@ -2904,7 +2788,7 @@
     {
       "kind": "Player",
       "anchor": [
-        6,
+        5,
         5,
         0
       ],
@@ -2933,66 +2817,8 @@
     {
       "kind": "LaserSource",
       "anchor": [
-        4,
-        1,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": false,
-      "combined_group": null
-    },
-    {
-      "kind": "Mirror",
-      "anchor": [
-        2,
-        5,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": false,
-      "combined_group": null
-    },
-    {
-      "kind": "Mirror",
-      "anchor": [
-        2,
-        4,
+        3,
+        3,
         0
       ],
       "orientation": {
@@ -3014,13 +2840,13 @@
           ]
         ]
       },
-      "fixed": true,
+      "fixed": false,
       "combined_group": null
     },
     {
       "kind": "Goal",
       "anchor": [
-        7,
+        5,
         6,
         0
       ],
@@ -3047,763 +2873,9 @@
       "combined_group": null
     },
     {
-      "kind": "Wall",
-      "anchor": [
-        0,
-        0,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        0,
-        9,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        1,
-        0,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        1,
-        9,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        2,
-        0,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        2,
-        9,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        3,
-        0,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        3,
-        9,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        4,
-        0,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        4,
-        9,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
+      "kind": "Pushable",
       "anchor": [
         5,
-        0,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        5,
-        9,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        6,
-        0,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        6,
-        9,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        7,
-        0,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        7,
-        9,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        8,
-        0,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        8,
-        9,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        9,
-        0,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        9,
-        9,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        0,
-        1,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        9,
-        1,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        0,
-        2,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        9,
-        2,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        0,
-        3,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        9,
-        3,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        0,
         4,
         0
       ],
@@ -3817,412 +2889,6 @@
           [
             0,
             1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        9,
-        4,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        0,
-        5,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        9,
-        5,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        0,
-        6,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        9,
-        6,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        0,
-        7,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        9,
-        7,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        0,
-        8,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        9,
-        8,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        1,
-        1,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        6,
-        1,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        7,
-        1,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        8,
-        1,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Mirror",
-      "anchor": [
-        5,
-        3,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            -1,
-            0,
             0
           ],
           [
@@ -4233,848 +2899,437 @@
         ]
       },
       "fixed": false,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        5,
-        1,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        3,
-        1,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        2,
-        1,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Mirror",
-      "anchor": [
-        2,
-        3,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            0,
-            -1,
-            0
-          ],
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": false,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        1,
-        7,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        2,
-        7,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        3,
-        7,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        4,
-        7,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        5,
-        7,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        6,
-        7,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        7,
-        7,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        8,
-        5,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        8,
-        4,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        8,
-        3,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        8,
-        2,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        8,
-        7,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        8,
-        8,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        7,
-        8,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        6,
-        8,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        5,
-        8,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        4,
-        8,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        3,
-        8,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        2,
-        8,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        1,
-        8,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        7,
-        2,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        7,
-        3,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        7,
-        4,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        7,
-        5,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
-      "combined_group": null
-    },
-    {
-      "kind": "Wall",
-      "anchor": [
-        8,
-        6,
-        0
-      ],
-      "orientation": {
-        "mat": [
-          [
-            1,
-            0,
-            0
-          ],
-          [
-            0,
-            1,
-            0
-          ],
-          [
-            0,
-            0,
-            1
-          ]
-        ]
-      },
-      "fixed": true,
       "combined_group": null
     }
-  ]
+  ],
+  "solutions": [
+    {
+      "name": "Optimal Solution (12 moves, 21 turns, Epiphany 9.1)",
+      "actions": [
+        "MoveSouth",
+        "MoveSouth",
+        "MoveEast",
+        "MoveSouth",
+        "MoveWest",
+        "MoveWest",
+        "MoveWest",
+        "MoveSouth",
+        "MoveWest",
+        "MoveNorth",
+        "MoveWest",
+        "MoveNorth",
+        "MoveEast",
+        "MoveEast",
+        "MoveEast",
+        "MoveSouth",
+        "MoveEast",
+        "MoveEast",
+        "MoveNorth",
+        "MoveNorth",
+        "MoveNorth"
+      ],
+      "profile": {
+        "is_solvable": true,
+        "macro_steps": 12,
+        "atomic_turns": 21,
+        "optimal_actions": [
+          "MoveSouth",
+          "MoveSouth",
+          "MoveEast",
+          "MoveSouth",
+          "MoveWest",
+          "MoveWest",
+          "MoveWest",
+          "MoveSouth",
+          "MoveWest",
+          "MoveNorth",
+          "MoveWest",
+          "MoveNorth",
+          "MoveEast",
+          "MoveEast",
+          "MoveEast",
+          "MoveSouth",
+          "MoveEast",
+          "MoveEast",
+          "MoveNorth",
+          "MoveNorth",
+          "MoveNorth"
+        ],
+        "epiphany_score": 9.083333,
+        "load_bearing_factor": 1.0,
+        "redundant_bodies": [],
+        "milestones": [
+          {
+            "SpatialPush": {
+              "body_id": 103,
+              "kind": "Pushable",
+              "from": [
+                5,
+                4,
+                0
+              ],
+              "to": [
+                5,
+                3,
+                0
+              ]
+            }
+          },
+          {
+            "SpatialPush": {
+              "body_id": 103,
+              "kind": "Pushable",
+              "from": [
+                5,
+                3,
+                0
+              ],
+              "to": [
+                5,
+                2,
+                0
+              ]
+            }
+          },
+          {
+            "SpatialPush": {
+              "body_id": 103,
+              "kind": "Pushable",
+              "from": [
+                5,
+                2,
+                0
+              ],
+              "to": [
+                4,
+                2,
+                0
+              ]
+            }
+          },
+          {
+            "SpatialPush": {
+              "body_id": 103,
+              "kind": "Pushable",
+              "from": [
+                4,
+                2,
+                0
+              ],
+              "to": [
+                3,
+                2,
+                0
+              ]
+            }
+          },
+          {
+            "SpatialPush": {
+              "body_id": 103,
+              "kind": "Pushable",
+              "from": [
+                3,
+                2,
+                0
+              ],
+              "to": [
+                2,
+                2,
+                0
+              ]
+            }
+          },
+          {
+            "SpatialPush": {
+              "body_id": 103,
+              "kind": "Pushable",
+              "from": [
+                2,
+                2,
+                0
+              ],
+              "to": [
+                2,
+                3,
+                0
+              ]
+            }
+          },
+          {
+            "SpatialPush": {
+              "body_id": 103,
+              "kind": "Pushable",
+              "from": [
+                2,
+                3,
+                0
+              ],
+              "to": [
+                3,
+                3,
+                0
+              ]
+            }
+          },
+          {
+            "SpatialPush": {
+              "body_id": 103,
+              "kind": "Pushable",
+              "from": [
+                3,
+                3,
+                0
+              ],
+              "to": [
+                4,
+                3,
+                0
+              ]
+            }
+          },
+          {
+            "SpatialPush": {
+              "body_id": 103,
+              "kind": "Pushable",
+              "from": [
+                4,
+                3,
+                0
+              ],
+              "to": [
+                5,
+                3,
+                0
+              ]
+            }
+          },
+          {
+            "OpticalSwitch": {
+              "source_id": 99,
+              "affected_blocks": [
+                99
+              ]
+            }
+          },
+          {
+            "OpticalSwitch": {
+              "source_id": 99,
+              "affected_blocks": [
+                99
+              ]
+            }
+          },
+          {
+            "OpticalSwitch": {
+              "source_id": 99,
+              "affected_blocks": [
+                99
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "quality_profile": {
+    "is_solvable": true,
+    "macro_steps": 12,
+    "atomic_turns": 21,
+    "optimal_actions": [
+      "MoveSouth",
+      "MoveSouth",
+      "MoveEast",
+      "MoveSouth",
+      "MoveWest",
+      "MoveWest",
+      "MoveWest",
+      "MoveSouth",
+      "MoveWest",
+      "MoveNorth",
+      "MoveWest",
+      "MoveNorth",
+      "MoveEast",
+      "MoveEast",
+      "MoveEast",
+      "MoveSouth",
+      "MoveEast",
+      "MoveEast",
+      "MoveNorth",
+      "MoveNorth",
+      "MoveNorth"
+    ],
+    "epiphany_score": 9.083333,
+    "load_bearing_factor": 1.0,
+    "redundant_bodies": [],
+    "milestones": [
+      {
+        "SpatialPush": {
+          "body_id": 103,
+          "kind": "Pushable",
+          "from": [
+            5,
+            4,
+            0
+          ],
+          "to": [
+            5,
+            3,
+            0
+          ]
+        }
+      },
+      {
+        "SpatialPush": {
+          "body_id": 103,
+          "kind": "Pushable",
+          "from": [
+            5,
+            3,
+            0
+          ],
+          "to": [
+            5,
+            2,
+            0
+          ]
+        }
+      },
+      {
+        "SpatialPush": {
+          "body_id": 103,
+          "kind": "Pushable",
+          "from": [
+            5,
+            2,
+            0
+          ],
+          "to": [
+            4,
+            2,
+            0
+          ]
+        }
+      },
+      {
+        "SpatialPush": {
+          "body_id": 103,
+          "kind": "Pushable",
+          "from": [
+            4,
+            2,
+            0
+          ],
+          "to": [
+            3,
+            2,
+            0
+          ]
+        }
+      },
+      {
+        "SpatialPush": {
+          "body_id": 103,
+          "kind": "Pushable",
+          "from": [
+            3,
+            2,
+            0
+          ],
+          "to": [
+            2,
+            2,
+            0
+          ]
+        }
+      },
+      {
+        "SpatialPush": {
+          "body_id": 103,
+          "kind": "Pushable",
+          "from": [
+            2,
+            2,
+            0
+          ],
+          "to": [
+            2,
+            3,
+            0
+          ]
+        }
+      },
+      {
+        "SpatialPush": {
+          "body_id": 103,
+          "kind": "Pushable",
+          "from": [
+            2,
+            3,
+            0
+          ],
+          "to": [
+            3,
+            3,
+            0
+          ]
+        }
+      },
+      {
+        "SpatialPush": {
+          "body_id": 103,
+          "kind": "Pushable",
+          "from": [
+            3,
+            3,
+            0
+          ],
+          "to": [
+            4,
+            3,
+            0
+          ]
+        }
+      },
+      {
+        "SpatialPush": {
+          "body_id": 103,
+          "kind": "Pushable",
+          "from": [
+            4,
+            3,
+            0
+          ],
+          "to": [
+            5,
+            3,
+            0
+          ]
+        }
+      },
+      {
+        "OpticalSwitch": {
+          "source_id": 99,
+          "affected_blocks": [
+            99
+          ]
+        }
+      },
+      {
+        "OpticalSwitch": {
+          "source_id": 99,
+          "affected_blocks": [
+            99
+          ]
+        }
+      },
+      {
+        "OpticalSwitch": {
+          "source_id": 99,
+          "affected_blocks": [
+            99
+          ]
+        }
+      }
+    ]
+  }
 }
