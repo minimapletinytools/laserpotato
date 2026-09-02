@@ -307,7 +307,7 @@ impl Default for EditorState {
             cached_solution: None,
             backup_world: None,
             return_mode: AppMode::Editor,
-            tester_dir: String::from("levels/mined"),
+            tester_dir: String::from("levels"),
             tester_entries: Vec::new(),
             tester_selected_path: None,
             tester_bulk_selected: std::collections::HashSet::new(),
@@ -1119,7 +1119,7 @@ mod tests {
     #[test]
     fn level_tester_state_and_table_flow_test() {
         let mut editor = EditorState::default();
-        assert_eq!(editor.tester_dir, "levels/mined");
+        assert_eq!(editor.tester_dir, "levels");
         assert_eq!(editor.tester_sort_col, TesterSortColumn::Name);
         assert_eq!(editor.tester_sort_dir, TesterSortDirection::Ascending);
         assert!(!editor.tester_expanded);
@@ -1131,6 +1131,7 @@ mod tests {
                 filename: "puzzle_c.json".into(),
                 name: "Alpha Puzzle".into(),
                 description: "Tricky reflection step".into(),
+                is_directory: false,
                 macro_steps: 12,
                 atomic_turns: 30,
                 epiphany: 7.5,
@@ -1151,6 +1152,7 @@ mod tests {
                 filename: "puzzle_a.json".into(),
                 name: "Gamma Puzzle".into(),
                 description: "".into(),
+                is_directory: false,
                 macro_steps: 5,
                 atomic_turns: 10,
                 epiphany: 3.0,
@@ -1171,6 +1173,7 @@ mod tests {
                 filename: "puzzle_b.json".into(),
                 name: "Beta Puzzle".into(),
                 description: "".into(),
+                is_directory: false,
                 macro_steps: 22,
                 atomic_turns: 54,
                 epiphany: 15.0,

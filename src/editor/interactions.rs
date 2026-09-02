@@ -1263,14 +1263,26 @@ pub fn tester_table_interaction_system(
             editor.tester_dirty = true;
         } else if let Some(row) = select_row {
             let path = row.0.clone();
-            editor.tester_selected_path = Some(path.clone());
-            if let Ok(lvl) = crate::level::load_level_from_file(&path) {
-                game.engine = TurnEngine::new(lvl.to_world());
-                editor.current_level_path = path;
-                editor.solutions = lvl.solutions;
-                editor.last_saved_hash = compute_level_hash(&game.engine.world);
+            if let Some(entry) = editor.tester_entries.iter().find(|e| e.path == path).cloned() {
+                if entry.is_directory {
+                    editor.tester_dir = path;
+                    editor.tester_entries.clear();
+                    editor.tester_scroll_offset = 0;
+                    editor.tester_selected_path = None;
+                    editor.tester_bulk_selected.clear();
+                    editor.tester_dirty = true;
+                    editor.toast(format!("Opened folder: {}", entry.filename));
+                } else {
+                    editor.tester_selected_path = Some(path.clone());
+                    if let Ok(lvl) = crate::level::load_level_from_file(&path) {
+                        game.engine = TurnEngine::new(lvl.to_world());
+                        editor.current_level_path = path;
+                        editor.solutions = lvl.solutions;
+                        editor.last_saved_hash = compute_level_hash(&game.engine.world);
+                    }
+                    editor.tester_dirty = true;
+                }
             }
-            editor.tester_dirty = true;
         } else if let Some(check) = check_row {
             let path = check.0.clone();
             if editor.tester_bulk_selected.contains(&path) {
@@ -1280,12 +1292,17 @@ pub fn tester_table_interaction_system(
             }
             editor.tester_dirty = true;
         } else if select_all.is_some() {
-            let total = editor.tester_entries.len();
+            let file_paths: Vec<String> = editor
+                .tester_entries
+                .iter()
+                .filter(|e| !e.is_directory)
+                .map(|e| e.path.clone())
+                .collect();
+            let total = file_paths.len();
             if total > 0 && editor.tester_bulk_selected.len() == total {
                 editor.tester_bulk_selected.clear();
             } else {
-                let paths: Vec<String> = editor.tester_entries.iter().map(|e| e.path.clone()).collect();
-                editor.tester_bulk_selected.extend(paths);
+                editor.tester_bulk_selected.extend(file_paths);
             }
             editor.tester_dirty = true;
         } else if trash_btn.is_some() {
@@ -1301,7 +1318,7 @@ pub fn tester_table_interaction_system(
             let current = std::path::PathBuf::from(&editor.tester_dir);
             if let Some(parent) = current.parent() {
                 let parent_str = parent.to_string_lossy().to_string();
-                if !parent_str.is_empty() {
+                if !parent_str.is_empty() && parent_str != "." {
                     editor.tester_dir = parent_str;
                 } else {
                     editor.tester_dir = "levels".into();
@@ -1311,6 +1328,8 @@ pub fn tester_table_interaction_system(
             }
             editor.tester_entries.clear();
             editor.tester_scroll_offset = 0;
+            editor.tester_selected_path = None;
+            editor.tester_bulk_selected.clear();
             editor.tester_dirty = true;
         } else if refresh_btn.is_some() {
             editor.tester_entries.clear();

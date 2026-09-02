@@ -377,6 +377,7 @@ pub struct TesterLevelEntry {
     pub filename: String,
     pub name: String,
     pub description: String,
+    pub is_directory: bool,
     pub macro_steps: u32,
     pub atomic_turns: u32,
     pub epiphany: f32,
@@ -391,6 +392,31 @@ pub struct TesterLevelEntry {
     pub total_blocks: u32,
     pub load_bearing_pct: f32,
     pub has_comment: bool,
+}
+
+/// Create a directory entry row for the Level Tester browser table.
+pub fn extract_tester_dir_entry(path: &str, name: &str) -> TesterLevelEntry {
+    TesterLevelEntry {
+        path: path.to_string(),
+        filename: name.to_string(),
+        name: format!("📁 {}/", name),
+        description: "Folder".into(),
+        is_directory: true,
+        macro_steps: 0,
+        atomic_turns: 0,
+        epiphany: 0.0,
+        width: 0,
+        height: 0,
+        depth: 0,
+        mirrors: 0,
+        crates: 0,
+        polyominos: 0,
+        lasers: 0,
+        goals: 0,
+        total_blocks: 0,
+        load_bearing_pct: 0.0,
+        has_comment: false,
+    }
 }
 
 /// Extract summary metadata from a level file for the Level Tester table.
@@ -489,6 +515,7 @@ pub fn extract_tester_level_entry(path: &str, filename: &str) -> Option<TesterLe
             lvl.name
         },
         description,
+        is_directory: false,
         macro_steps,
         atomic_turns,
         epiphany,

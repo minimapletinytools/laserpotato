@@ -385,24 +385,31 @@ pub fn sort_tester_entries(
     dir: TesterSortDirection,
 ) {
     entries.sort_by(|a, b| {
-        let ord = match col {
-            TesterSortColumn::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-            TesterSortColumn::MacroMoves => a.macro_steps.cmp(&b.macro_steps),
-            TesterSortColumn::AtomicTurns => a.atomic_turns.cmp(&b.atomic_turns),
-            TesterSortColumn::Epiphany => {
-                a.epiphany.partial_cmp(&b.epiphany).unwrap_or(std::cmp::Ordering::Equal)
+        match (a.is_directory, b.is_directory) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            (true, true) => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+            (false, false) => {
+                let ord = match col {
+                    TesterSortColumn::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+                    TesterSortColumn::MacroMoves => a.macro_steps.cmp(&b.macro_steps),
+                    TesterSortColumn::AtomicTurns => a.atomic_turns.cmp(&b.atomic_turns),
+                    TesterSortColumn::Epiphany => {
+                        a.epiphany.partial_cmp(&b.epiphany).unwrap_or(std::cmp::Ordering::Equal)
+                    }
+                    TesterSortColumn::Size => {
+                        (a.width * a.height * a.depth).cmp(&(b.width * b.height * b.depth))
+                    }
+                    TesterSortColumn::Blocks => a.total_blocks.cmp(&b.total_blocks),
+                    TesterSortColumn::LoadBearing => {
+                        a.load_bearing_pct.partial_cmp(&b.load_bearing_pct).unwrap_or(std::cmp::Ordering::Equal)
+                    }
+                };
+                match dir {
+                    TesterSortDirection::Ascending => ord,
+                    TesterSortDirection::Descending => ord.reverse(),
+                }
             }
-            TesterSortColumn::Size => {
-                (a.width * a.height * a.depth).cmp(&(b.width * b.height * b.depth))
-            }
-            TesterSortColumn::Blocks => a.total_blocks.cmp(&b.total_blocks),
-            TesterSortColumn::LoadBearing => {
-                a.load_bearing_pct.partial_cmp(&b.load_bearing_pct).unwrap_or(std::cmp::Ordering::Equal)
-            }
-        };
-        match dir {
-            TesterSortDirection::Ascending => ord,
-            TesterSortDirection::Descending => ord.reverse(),
         }
     });
 }
@@ -561,43 +568,25 @@ pub fn update_tester_table_ui_system(
 
     // 1. Scan directory if entries are empty
     if editor.tester_entries.is_empty() {
-        let path = std::path::Path::new(&editor.tester_dir);
+        let (_parent, items) = crate::level::list_directory_entries(&editor.tester_dir);
         let mut loaded = Vec::new();
-
-        fn collect_tester_entries(
-            dir: &std::path::Path,
-            base: &std::path::Path,
-            loaded: &mut Vec<crate::level::TesterLevelEntry>,
-        ) {
-            if let Ok(read_dir) = std::fs::read_dir(dir) {
-                let mut entries: Vec<_> = read_dir.flatten().collect();
-                entries.sort_by_key(|e| e.path());
-                for entry in entries {
-                    let p = entry.path();
-                    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
-                    if name.starts_with('.') {
-                        continue;
-                    }
-                    if p.is_dir() {
-                        collect_tester_entries(&p, base, loaded);
-                    } else if p.is_file() && p.extension().and_then(|ext| ext.to_str()) == Some("json") {
-                        let path_str = p.to_string_lossy().to_string();
-                        let rel_name = p
-                            .strip_prefix(base)
-                            .map(|rp| rp.to_string_lossy().to_string())
-                            .unwrap_or(name);
-                        if let Some(entry_data) = crate::level::extract_tester_level_entry(&path_str, &rel_name) {
-                            loaded.push(entry_data);
-                        }
+        for item in items {
+            match item.kind {
+                crate::level::FilePickerEntryKind::Directory => {
+                    loaded.push(crate::level::extract_tester_dir_entry(&item.path, &item.name));
+                }
+                crate::level::FilePickerEntryKind::JsonLevelFile => {
+                    if let Some(entry_data) = crate::level::extract_tester_level_entry(&item.path, &item.name) {
+                        loaded.push(entry_data);
                     }
                 }
             }
         }
-
-        collect_tester_entries(path, path, &mut loaded);
         editor.tester_entries = loaded;
         if editor.tester_selected_path.is_none() && !editor.tester_entries.is_empty() {
-            editor.tester_selected_path = Some(editor.tester_entries[0].path.clone());
+            if let Some(first_file) = editor.tester_entries.iter().find(|e| !e.is_directory) {
+                editor.tester_selected_path = Some(first_file.path.clone());
+            }
         }
     }
 
@@ -735,26 +724,47 @@ pub fn update_tester_table_ui_system(
                 },
             ))
             .with_children(|row| {
-                // Checkbox button
-                row.spawn((
-                    TesterRowCheckBtn(entry.path.clone()),
-                    Button,
-                    Node {
-                        width: Val::Px(26.0),
-                        height: Val::Px(22.0),
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                    BackgroundColor(if is_checked { Color::srgba(0.15, 0.45, 0.25, 0.9) } else { theme::BTN_NORMAL }),
-                ))
-                .with_children(|b| {
-                    b.spawn((
-                        Text::new(if is_checked { "✓" } else { " " }),
-                        TextFont::from_font_size(10.5),
-                        TextColor(if is_checked { Color::srgb(0.4, 0.9, 0.5) } else { theme::TEXT_MUTED }),
-                    ));
-                });
+                if entry.is_directory {
+                    // Directory row: folder icon badge
+                    row.spawn((
+                        Node {
+                            width: Val::Px(26.0),
+                            height: Val::Px(22.0),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },
+                        BackgroundColor(Color::NONE),
+                    ))
+                    .with_children(|b| {
+                        b.spawn((
+                            Text::new("📁"),
+                            TextFont::from_font_size(11.0),
+                            TextColor(theme::TEXT_CYAN),
+                        ));
+                    });
+                } else {
+                    // File row: Checkbox button
+                    row.spawn((
+                        TesterRowCheckBtn(entry.path.clone()),
+                        Button,
+                        Node {
+                            width: Val::Px(26.0),
+                            height: Val::Px(22.0),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },
+                        BackgroundColor(if is_checked { Color::srgba(0.15, 0.45, 0.25, 0.9) } else { theme::BTN_NORMAL }),
+                    ))
+                    .with_children(|b| {
+                        b.spawn((
+                            Text::new(if is_checked { "✓" } else { " " }),
+                            TextFont::from_font_size(10.5),
+                            TextColor(if is_checked { Color::srgb(0.4, 0.9, 0.5) } else { theme::TEXT_MUTED }),
+                        ));
+                    });
+                }
 
                 // Row selection button
                 row.spawn((
@@ -768,11 +778,113 @@ pub fn update_tester_table_ui_system(
                         padding: UiRect::axes(Val::Px(6.0), Val::ZERO),
                         ..default()
                     },
-                    BackgroundColor(if is_row_selected { theme::BTN_ACTIVE } else { theme::BTN_NORMAL }),
+                    BackgroundColor(if is_row_selected {
+                        theme::BTN_ACTIVE
+                    } else if entry.is_directory {
+                        Color::srgba(0.12, 0.16, 0.22, 0.8)
+                    } else {
+                        theme::BTN_NORMAL
+                    }),
                 ))
                 .with_children(|row_btn| {
-                    if !is_expanded {
-                        // Compact row: Name + Moves
+                    if entry.is_directory {
+                        if !is_expanded {
+                            row_btn.spawn((
+                                Text::new(&entry.name),
+                                TextFont::from_font_size(11.0),
+                                TextColor(theme::TEXT_CYAN),
+                                Node {
+                                    width: Val::Px(250.0),
+                                    overflow: Overflow::clip_x(),
+                                    ..default()
+                                },
+                            ));
+                            row_btn.spawn((
+                                Text::new("[DIR]"),
+                                TextFont::from_font_size(10.0),
+                                TextColor(theme::TEXT_MUTED),
+                                Node {
+                                    width: Val::Px(60.0),
+                                    justify_content: JustifyContent::Center,
+                                    ..default()
+                                },
+                            ));
+                        } else {
+                            row_btn.spawn((
+                                Text::new(&entry.name),
+                                TextFont::from_font_size(11.0),
+                                TextColor(theme::TEXT_CYAN),
+                                Node {
+                                    width: Val::Px(160.0),
+                                    overflow: Overflow::clip_x(),
+                                    ..default()
+                                },
+                            ));
+                            for _ in 0..3 {
+                                row_btn.spawn((
+                                    Text::new("--"),
+                                    TextFont::from_font_size(10.5),
+                                    TextColor(theme::TEXT_MUTED),
+                                    Node {
+                                        width: Val::Px(55.0),
+                                        justify_content: JustifyContent::Center,
+                                        ..default()
+                                    },
+                                ));
+                            }
+                            row_btn.spawn((
+                                Text::new("--"),
+                                TextFont::from_font_size(10.5),
+                                TextColor(theme::TEXT_MUTED),
+                                Node {
+                                    width: Val::Px(75.0),
+                                    justify_content: JustifyContent::Center,
+                                    ..default()
+                                },
+                            ));
+                            row_btn.spawn((
+                                Text::new("Folder"),
+                                TextFont::from_font_size(10.5),
+                                TextColor(theme::TEXT_MUTED),
+                                Node {
+                                    width: Val::Px(60.0),
+                                    justify_content: JustifyContent::Center,
+                                    ..default()
+                                },
+                            ));
+                            row_btn.spawn((
+                                Text::new("--"),
+                                TextFont::from_font_size(10.5),
+                                TextColor(theme::TEXT_MUTED),
+                                Node {
+                                    width: Val::Px(100.0),
+                                    justify_content: JustifyContent::Center,
+                                    ..default()
+                                },
+                            ));
+                            row_btn.spawn((
+                                Text::new("--"),
+                                TextFont::from_font_size(10.5),
+                                TextColor(theme::TEXT_MUTED),
+                                Node {
+                                    width: Val::Px(60.0),
+                                    justify_content: JustifyContent::Center,
+                                    ..default()
+                                },
+                            ));
+                            row_btn.spawn((
+                                Text::new("-"),
+                                TextFont::from_font_size(10.0),
+                                TextColor(theme::TEXT_MUTED),
+                                Node {
+                                    width: Val::Px(50.0),
+                                    justify_content: JustifyContent::Center,
+                                    ..default()
+                                },
+                            ));
+                        }
+                    } else if !is_expanded {
+                        // Compact file row: Name + Moves
                         row_btn.spawn((
                             Text::new(&entry.name),
                             TextFont::from_font_size(11.0),
@@ -794,7 +906,7 @@ pub fn update_tester_table_ui_system(
                             },
                         ));
                     } else {
-                        // Expanded row: Name, Moves, Turns, Epiphany, Size, Blocks, Load %, Notes
+                        // Expanded file row: Name, Moves, Turns, Epiphany, Size, Blocks, Load %, Notes
                         row_btn.spawn((
                             Text::new(&entry.name),
                             TextFont::from_font_size(11.0),
@@ -886,7 +998,7 @@ pub fn update_tester_table_ui_system(
         if total_count == 0 {
             status_text.0 = "Directory is empty".into();
         } else {
-            status_text.0 = format!("Showing {}–{} of {} levels  |  {} selected", start + 1, end, total_count, bulk_count);
+            status_text.0 = format!("Showing {}–{} of {} items  |  {} selected", start + 1, end, total_count, bulk_count);
         }
     }
 
@@ -910,16 +1022,26 @@ pub fn update_tester_table_ui_system(
     if let Some(selected_path) = &editor.tester_selected_path {
         if let Some(entry) = editor.tester_entries.iter().find(|e| &e.path == selected_path) {
             for mut title_text in &mut summary_title_query {
-                title_text.0 = format!("{} ({})", entry.name, entry.filename);
+                if entry.is_directory {
+                    title_text.0 = format!("{} (Folder)", entry.filename);
+                } else {
+                    title_text.0 = format!("{} ({})", entry.name, entry.filename);
+                }
             }
             for mut stats_text in &mut summary_stats_query {
-                stats_text.0 = format!(
-                    "Moves: {} | Turns: {} | Epiphany: {:.1}\nSize: {}x{}x{} | Total Blocks: {} | Essential: {:.0}%",
-                    entry.macro_steps, entry.atomic_turns, entry.epiphany, entry.width, entry.height, entry.depth, entry.total_blocks, entry.load_bearing_pct
-                );
+                if entry.is_directory {
+                    stats_text.0 = "Folder containing levels and subdirectories.\nClick row to browse folder contents.".into();
+                } else {
+                    stats_text.0 = format!(
+                        "Moves: {} | Turns: {} | Epiphany: {:.1}\nSize: {}x{}x{} | Total Blocks: {} | Essential: {:.0}%",
+                        entry.macro_steps, entry.atomic_turns, entry.epiphany, entry.width, entry.height, entry.depth, entry.total_blocks, entry.load_bearing_pct
+                    );
+                }
             }
             for mut comment_text in &mut summary_comment_query {
-                if entry.has_comment {
+                if entry.is_directory {
+                    comment_text.0 = "Directory: (Click to open)".into();
+                } else if entry.has_comment {
                     comment_text.0 = format!("Notes: {}", entry.description);
                 } else {
                     comment_text.0 = "Notes: (No comment added yet)".into();
