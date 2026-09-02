@@ -175,6 +175,7 @@ fn main() {
             }),
             ..default()
         }))
+        .insert_resource(ClearColor(Color::srgb(0.12, 0.12, 0.14)))
         .add_plugins(PlayUiPlugin)
         .insert_resource(catalog)
         .insert_resource(screenshot_config)
@@ -194,7 +195,7 @@ fn main() {
             (
                 camera::camera_controller_system,
                 render::sync_bodies,
-                render::sync_lasers,
+                render::sync_lasers.after(render::sync_bodies),
                 render::animate_laser_pfx,
                 render::draw_grid_gizmos,
                 render::draw_combined_group_gizmos,
